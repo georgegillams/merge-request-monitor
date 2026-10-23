@@ -1,6 +1,6 @@
 //
 //  MenuShortcut.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit

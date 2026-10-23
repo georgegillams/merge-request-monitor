@@ -1,12 +1,12 @@
 //
 //  HoverTooltip.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit
 import SwiftUI
 
-private let hoverTooltipWindowIdentifier = NSUserInterfaceItemIdentifier("GitLabMonitor.HoverTooltip")
+private let hoverTooltipWindowIdentifier = NSUserInterfaceItemIdentifier("MergeRequestMonitor.HoverTooltip")
 
 /// True for the custom tooltip panel. It is borderless and can extend past the status
 /// panel, but it ignores clicks, so it must not keep that panel open.

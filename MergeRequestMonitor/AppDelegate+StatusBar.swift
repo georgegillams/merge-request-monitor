@@ -1,6 +1,6 @@
 //
 //  AppDelegate+StatusBar.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit
@@ -24,8 +24,8 @@ extension AppDelegate {
         updateMenuBarIcon()
 
         if let button = statusBarItem.button {
-            button.toolTip = "GitLab Monitor"
-            button.setAccessibilityLabel("GitLab Monitor")
+            button.toolTip = "Merge Request Monitor"
+            button.setAccessibilityLabel("Merge Request Monitor")
             // Target is used by NSStatusBarButton.mouseDown override; no sendAction —
             // AppKit’s default press/release cycle would clear the open highlight.
             button.target = self
@@ -83,7 +83,7 @@ extension AppDelegate {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "GitLab Monitor"
+        image.accessibilityDescription = "Merge Request Monitor"
         return image
     }()
 

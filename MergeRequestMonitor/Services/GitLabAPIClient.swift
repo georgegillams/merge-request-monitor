@@ -1,6 +1,6 @@
 //
 //  GitLabAPIClient.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation

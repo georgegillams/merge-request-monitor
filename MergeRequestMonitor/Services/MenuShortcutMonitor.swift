@@ -1,6 +1,6 @@
 //
 //  MenuShortcutMonitor.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Carbon.HIToolbox

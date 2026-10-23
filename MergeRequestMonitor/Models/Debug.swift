@@ -1,6 +1,6 @@
 //
 //  Debug.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation
@@ -14,7 +14,7 @@ public func gDebugPrint(_ items: Any..., separator: String = " ", terminator: St
 
     // Also append to a file so logs are visible even when Xcode/console swallow stdout.
     let line = message + (terminator.hasSuffix("\n") ? terminator : terminator + "\n")
-    let path = "/tmp/gitlab-monitor-gdebug.log"
+    let path = "/tmp/merge-request-monitor-gdebug.log"
     if let data = line.data(using: .utf8) {
         if FileManager.default.fileExists(atPath: path),
            let handle = FileHandle(forWritingAtPath: path) {

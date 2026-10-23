@@ -43,9 +43,9 @@
 		A200000A2DA7000100GLMN01 /* MRRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MRRowView.swift; sourceTree = "<group>"; };
 		A200000B2DA7000100GLMN01 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A200000C2DA7000100GLMN01 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A200000D2DA7000100GLMN01 /* GitLabMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GitLabMonitor.entitlements; sourceTree = "<group>"; };
-		A200000E2DA7000100GLMN01 /* GitLabMonitor-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "GitLabMonitor-Release.entitlements"; sourceTree = "<group>"; };
-		A200000F2DA7000100GLMN01 /* GitLab Monitor Local.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GitLab Monitor Local.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A200000D2DA7000100GLMN01 /* MergeRequestMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MergeRequestMonitor.entitlements; sourceTree = "<group>"; };
+		A200000E2DA7000100GLMN01 /* MergeRequestMonitor-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "MergeRequestMonitor-Release.entitlements"; sourceTree = "<group>"; };
+		A200000F2DA7000100GLMN01 /* Merge Request Monitor Local.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Merge Request Monitor Local.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000112DA7000100GLMN01 /* Debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debug.swift; sourceTree = "<group>"; };
 		A20000122DA7000100GLMN01 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Main.storyboard; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		A20000132DA7000100GLMN01 /* HoverTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverTooltip.swift; sourceTree = "<group>"; };
@@ -71,12 +71,12 @@
 		A50000012DA7000100GLMN01 = {
 			isa = PBXGroup;
 			children = (
-				A50000022DA7000100GLMN01 /* GitLabMonitor */,
+				A50000022DA7000100GLMN01 /* MergeRequestMonitor */,
 				A50000032DA7000100GLMN01 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A50000022DA7000100GLMN01 /* GitLabMonitor */ = {
+		A50000022DA7000100GLMN01 /* MergeRequestMonitor */ = {
 			isa = PBXGroup;
 			children = (
 				A20000012DA7000100GLMN01 /* AppDelegate.swift */,
@@ -88,13 +88,13 @@
 				A50000082DA7000100GLMN01 /* Trunk */,
 				A200000C2DA7000100GLMN01 /* Assets.xcassets */,
 			);
-			path = GitLabMonitor;
+			path = MergeRequestMonitor;
 			sourceTree = "<group>";
 		};
 		A50000032DA7000100GLMN01 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A200000F2DA7000100GLMN01 /* GitLab Monitor Local.app */,
+				A200000F2DA7000100GLMN01 /* Merge Request Monitor Local.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -146,8 +146,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000122DA7000100GLMN01 /* Main.storyboard */,
-				A200000D2DA7000100GLMN01 /* GitLabMonitor.entitlements */,
-				A200000E2DA7000100GLMN01 /* GitLabMonitor-Release.entitlements */,
+				A200000D2DA7000100GLMN01 /* MergeRequestMonitor.entitlements */,
+				A200000E2DA7000100GLMN01 /* MergeRequestMonitor-Release.entitlements */,
 			);
 			path = Trunk;
 			sourceTree = "<group>";
@@ -155,9 +155,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A60000012DA7000100GLMN01 /* GitLab Monitor */ = {
+		A60000012DA7000100GLMN01 /* Merge Request Monitor */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A70000032DA7000100GLMN01 /* Build configuration list for PBXNativeTarget "GitLab Monitor" */;
+			buildConfigurationList = A70000032DA7000100GLMN01 /* Build configuration list for PBXNativeTarget "Merge Request Monitor" */;
 			buildPhases = (
 				A60000022DA7000100GLMN01 /* Sources */,
 				A40000012DA7000100GLMN01 /* Frameworks */,
@@ -167,13 +167,13 @@
 			);
 			dependencies = (
 			);
-			name = "GitLab Monitor";
+			name = "Merge Request Monitor";
 			packageProductDependencies = (
 				A30000012DA7000100GLMN01 /* LaunchAtLogin */,
 				A30000022DA7000100GLMN01 /* components-swiftUI */,
 			);
-			productName = "GitLab Monitor";
-			productReference = A200000F2DA7000100GLMN01 /* GitLab Monitor Local.app */;
+			productName = "Merge Request Monitor";
+			productReference = A200000F2DA7000100GLMN01 /* Merge Request Monitor Local.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -191,7 +191,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A70000012DA7000100GLMN01 /* Build configuration list for PBXProject "GitLabMonitor" */;
+			buildConfigurationList = A70000012DA7000100GLMN01 /* Build configuration list for PBXProject "MergeRequestMonitor" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -208,7 +208,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A60000012DA7000100GLMN01 /* GitLab Monitor */,
+				A60000012DA7000100GLMN01 /* Merge Request Monitor */,
 			);
 		};
 /* End PBXProject section */
@@ -371,7 +371,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = GitLabMonitor/Trunk/GitLabMonitor.entitlements;
+				CODE_SIGN_ENTITLEMENTS = MergeRequestMonitor/Trunk/MergeRequestMonitor.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -380,7 +380,7 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "GitLab Monitor (Local)";
+				INFOPLIST_KEY_CFBundleDisplayName = "Merge Request Monitor (Local)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -391,8 +391,8 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os.local";
-				PRODUCT_MODULE_NAME = GitLabMonitor;
-				PRODUCT_NAME = "GitLab Monitor Local";
+				PRODUCT_MODULE_NAME = MergeRequestMonitor;
+				PRODUCT_NAME = "Merge Request Monitor Local";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -403,7 +403,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "GitLabMonitor/Trunk/GitLabMonitor-Release.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "MergeRequestMonitor/Trunk/MergeRequestMonitor-Release.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -411,8 +411,8 @@
 				DEVELOPMENT_TEAM = F2NH4J9NYG;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "GitLab Monitor";
-				INFOPLIST_KEY_CFBundleName = "GitLab Monitor";
+				INFOPLIST_KEY_CFBundleDisplayName = "Merge Request Monitor";
+				INFOPLIST_KEY_CFBundleName = "Merge Request Monitor";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -423,7 +423,7 @@
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os";
-				PRODUCT_MODULE_NAME = GitLabMonitor;
+				PRODUCT_MODULE_NAME = MergeRequestMonitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -433,7 +433,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A70000012DA7000100GLMN01 /* Build configuration list for PBXProject "GitLabMonitor" */ = {
+		A70000012DA7000100GLMN01 /* Build configuration list for PBXProject "MergeRequestMonitor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A70000112DA7000100GLMN01 /* Debug */,
@@ -442,7 +442,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A70000032DA7000100GLMN01 /* Build configuration list for PBXNativeTarget "GitLab Monitor" */ = {
+		A70000032DA7000100GLMN01 /* Build configuration list for PBXNativeTarget "Merge Request Monitor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A70000132DA7000100GLMN01 /* Debug */,

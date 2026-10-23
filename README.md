@@ -1,4 +1,4 @@
-# GitLab Monitor
+# Merge Request Monitor
 
 Menu-bar macOS app that shows your authored open merge requests, pipeline stages, and approvals.
 
@@ -6,13 +6,13 @@ Menu-bar macOS app that shows your authored open merge requests, pipeline stages
 
 ### Install
 
-Download on the app store: https://apps.apple.com/gb/app/gitlab-monitor/id6820492677?mt=12
+Download on the app store: https://apps.apple.com/gb/app/id6820492677?mt=12
 
 Run, and look for the app in the status bar.
 
 ### Direct download
 
-1. Go to https://github.com/georgegillams/gitlab-monitor/releases/
+1. Go to https://github.com/georgegillams/merge-request-monitor/releases/
 1. Download and extract the latest zip
 1. Copy the app to `/Applications` and run it
 1. Look for the app in the status bar.
@@ -35,8 +35,8 @@ Run, and look for the app in the status bar.
 
 ## Run
 
-1. Open `GitLabMonitor.xcodeproj` in Xcode.
-2. Select the **GitLabMonitor** scheme and Run.
+1. Open `MergeRequestMonitor.xcodeproj` in Xcode.
+2. Select the **Merge Request Monitor** scheme and Run.
 3. Click the menu-bar icon → Settings → add your GitLab URL and token.
 
 ## Token storage
@@ -57,7 +57,7 @@ UI colors come from [components-swiftUI](https://github.com/georgegillams/compon
 
 ### App Store (App Store Connect)
 
-- Update version (marketing version) and build (needs incrementing). In Xcode: select **GitLabMonitor** target → **General** → **Identity** → **Version** / **Build**
+- Update version (marketing version) and build (needs incrementing). In Xcode: select **Merge Request Monitor** target → **General** → **Identity** → **Version** / **Build**
 - Take screenshots at 1280×800
 - Clean
 - Create build online at https://appstoreconnect.apple.com/
@@ -65,19 +65,18 @@ UI colors come from [components-swiftUI](https://github.com/georgegillams/compon
 - Archive
 - Upload
 
-Release archives use `GitLabMonitor-Release.entitlements` (App Sandbox enabled, with network client). No manual entitlements changes are needed before upload.
+Release archives use `MergeRequestMonitor-Release.entitlements` (App Sandbox enabled, with network client). No manual entitlements changes are needed before upload.
 
 ### Manual distribution (GitHub Releases)
 
-1. In Xcode, select the **GitLab Monitor** scheme and **Any Mac (Mac Catalyst)** / **My Mac** as appropriate.
+1. In Xcode, select the **Merge Request Monitor** scheme and **Any Mac (Mac Catalyst)** / **My Mac** as appropriate.
 1. Update **Version** / **Build** (see App Store steps above).
 1. Product → **Archive**.
 1. In the Organizer, select the archive → **Distribute App** → **Direct Distribution**
-1. After notarization completes, in the table row, select **Export** to export `GitLab Monitor.app`.
-1. Zip the app for distribution (Finder: right click `GitLab Monitor.app` → **Compress**) and name it like `GitLab-Monitor-<version>.zip`.
-1. Revert XCode build target to **GitLab Monitor** → **My Mac**.
-1. In GitHub: go to the [releases page](https://github.com/georgegillams/gitlab-monitor/releases/) and click **Draft a new release**.
+1. After notarization completes, in the table row, select **Export** to export `Merge Request Monitor.app`.
+1. Zip the app for distribution (Finder: right click `Merge Request Monitor.app` → **Compress**) and name it like `Merge-Request-Monitor-<version>.zip`.
+1. Revert XCode build target to **Merge Request Monitor** → **My Mac**.
+1. In GitHub: go to the [releases page](https://github.com/georgegillams/merge-request-monitor/releases/) and click **Draft a new release**.
 1. Choose a tag (create one if needed) like `<version>`, set the release title, and write release notes.
-1. Under **Assets**, upload `GitLab-Monitor-<version>.zip`.
+1. Under **Assets**, upload `Merge-Request-Monitor-<version>.zip`.
 1. Click **Publish release**.
-

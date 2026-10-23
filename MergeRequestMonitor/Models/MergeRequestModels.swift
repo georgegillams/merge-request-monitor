@@ -1,6 +1,6 @@
 //
 //  MergeRequestModels.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation

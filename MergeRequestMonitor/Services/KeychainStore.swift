@@ -1,6 +1,6 @@
 //
 //  KeychainStore.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation
@@ -96,7 +96,7 @@ struct KeychainStore {
         let attributes: [String: Any] = [
             kSecValueData as String: Data(token.utf8),
             kSecAttrAccessible as String: accessibility,
-            kSecAttrLabel as String: "GitLab Monitor token",
+            kSecAttrLabel as String: "Merge Request Monitor token",
             kSecAttrDescription as String: "GitLab personal access token"
         ]
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)

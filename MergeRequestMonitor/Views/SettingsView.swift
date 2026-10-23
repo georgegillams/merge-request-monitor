@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit
@@ -111,7 +111,7 @@ struct SettingsView: View {
                 Toggle(isOn: $launchAtLogin) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Launch at login")
-                        Text("Start GitLab Monitor automatically when you log in.")
+                        Text("Start Merge Request Monitor automatically when you log in.")
                             .font(.caption)
                             .foregroundStyle(Semantic.Colors.textDisabled)
                     }
