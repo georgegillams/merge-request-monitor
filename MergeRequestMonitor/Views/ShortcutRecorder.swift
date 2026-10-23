@@ -1,6 +1,6 @@
 //
 //  ShortcutRecorder.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit

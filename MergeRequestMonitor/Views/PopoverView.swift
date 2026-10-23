@@ -1,6 +1,6 @@
 //
 //  PopoverView.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import SwiftUI

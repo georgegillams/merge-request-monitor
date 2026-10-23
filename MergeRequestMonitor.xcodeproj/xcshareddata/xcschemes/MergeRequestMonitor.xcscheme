@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A60000012DA7000100GLMN01"
-               BuildableName = "GitLab Monitor.app"
-               BlueprintName = "GitLab Monitor"
-               ReferencedContainer = "container:GitLabMonitor.xcodeproj">
+               BuildableName = "Merge Request Monitor.app"
+               BlueprintName = "Merge Request Monitor"
+               ReferencedContainer = "container:MergeRequestMonitor.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -44,9 +44,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A60000012DA7000100GLMN01"
-            BuildableName = "GitLab Monitor.app"
-            BlueprintName = "GitLab Monitor"
-            ReferencedContainer = "container:GitLabMonitor.xcodeproj">
+            BuildableName = "Merge Request Monitor.app"
+            BlueprintName = "Merge Request Monitor"
+            ReferencedContainer = "container:MergeRequestMonitor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -61,9 +61,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A60000012DA7000100GLMN01"
-            BuildableName = "GitLab Monitor.app"
-            BlueprintName = "GitLab Monitor"
-            ReferencedContainer = "container:GitLabMonitor.xcodeproj">
+            BuildableName = "Merge Request Monitor.app"
+            BlueprintName = "Merge Request Monitor"
+            ReferencedContainer = "container:MergeRequestMonitor.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

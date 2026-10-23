@@ -1,6 +1,6 @@
 //
 //  AppSettings.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation

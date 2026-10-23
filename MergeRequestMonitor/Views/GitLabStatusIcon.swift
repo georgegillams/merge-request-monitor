@@ -1,6 +1,6 @@
 //
 //  GitLabStatusIcon.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import SwiftUI

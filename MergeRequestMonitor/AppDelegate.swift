@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import AppKit

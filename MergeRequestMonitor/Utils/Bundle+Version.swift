@@ -1,6 +1,6 @@
 //
 //  Bundle+Version.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation
@@ -17,13 +17,13 @@ extension Bundle {
     }
 
     var feedbackURL: URL {
-        let components = URLComponents(string: "https://www.georgegillams.co.uk/gitlab-monitor-feedback")!
+        let components = URLComponents(string: "https://www.georgegillams.co.uk/merge-request-monitor-feedback")!
         return components.url!
     }
 
     var authorURL: URL {
         var components = URLComponents(string: "https://www.georgegillams.co.uk/")!
-        components.queryItems = [URLQueryItem(name: "utm_source", value: "gitlab-monitor")]
+        components.queryItems = [URLQueryItem(name: "utm_source", value: "merge-request-monitor")]
         return components.url!
     }
 
@@ -36,7 +36,7 @@ extension Bundle {
     }
 
     var menuProductName: String {
-        "GitLab Monitor"
+        "Merge Request Monitor"
     }
 
     var menuBuildLabel: String {

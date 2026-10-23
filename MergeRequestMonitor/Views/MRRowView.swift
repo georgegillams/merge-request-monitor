@@ -1,6 +1,6 @@
 //
 //  MRRowView.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import SwiftUI

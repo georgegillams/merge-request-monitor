@@ -1,6 +1,6 @@
 //
 //  RefreshCoordinator.swift
-//  GitLabMonitor
+//  MergeRequestMonitor
 //
 
 import Foundation
