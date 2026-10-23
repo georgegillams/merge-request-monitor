@@ -67,6 +67,11 @@ actor GitLabAPIClient {
         } else {
             merged = []
         }
+        let defaultBranches = await fetchDefaultBranches(
+            baseURL: instance.normalizedBaseURL,
+            projectIDs: Set((open + merged).map(\.targetProjectID)),
+            token: token
+        )
         var results: [MergeRequestItem] = []
 
         try await withThrowingTaskGroup(of: MergeRequestItem?.self) { group in
@@ -75,13 +80,18 @@ actor GitLabAPIClient {
                     try await self.enrichOpen(
                         mr: mr,
                         instance: instance,
-                        token: token
+                        token: token,
+                        defaultBranch: defaultBranches[mr.targetProjectID] ?? ""
                     )
                 }
             }
             for mr in merged {
                 group.addTask {
-                    await Optional(self.makeMergedItem(mr: mr, instance: instance))
+                    await Optional(self.makeMergedItem(
+                        mr: mr,
+                        instance: instance,
+                        defaultBranch: defaultBranches[mr.targetProjectID] ?? ""
+                    ))
                 }
             }
             for try await item in group {
@@ -112,6 +122,9 @@ actor GitLabAPIClient {
         let updated_at: String?
         let merged_at: String?
         let project_id: Int
+        let target_project_id: Int?
+        let source_branch: String?
+        let target_branch: String?
         let references: References?
         let head_pipeline: PipelineRef?
         let pipeline: PipelineRef?
@@ -135,6 +148,11 @@ actor GitLabAPIClient {
                 return String(full[..<bang])
             }
             return "project/\(project_id)"
+        }
+
+        /// Project the MR merges into. Forks keep `project_id` as the source.
+        var targetProjectID: Int {
+            target_project_id ?? project_id
         }
     }
 
@@ -213,7 +231,8 @@ actor GitLabAPIClient {
     private func enrichOpen(
         mr: APIMergeRequest,
         instance: GitLabInstanceConfig,
-        token: String
+        token: String,
+        defaultBranch: String
     ) async throws -> MergeRequestItem {
         async let stages = fetchStages(
             baseURL: instance.normalizedBaseURL,
@@ -249,6 +268,9 @@ actor GitLabAPIClient {
             title: mr.title,
             projectPath: mr.projectPath,
             webURL: sameHostURL(mr.web_url, baseURL: instance.normalizedBaseURL),
+            sourceBranch: mr.source_branch ?? "",
+            targetBranch: mr.target_branch ?? "",
+            defaultBranch: defaultBranch,
             stages: try await stages,
             approvals: try await approvals,
             threads: await threads,
@@ -262,7 +284,8 @@ actor GitLabAPIClient {
     /// Recently merged rows only need identity and the solid merge mark.
     private func makeMergedItem(
         mr: APIMergeRequest,
-        instance: GitLabInstanceConfig
+        instance: GitLabInstanceConfig,
+        defaultBranch: String
     ) -> MergeRequestItem {
         let mergedAt = Self.parseGitLabDate(mr.merged_at)
         return MergeRequestItem(
@@ -274,6 +297,9 @@ actor GitLabAPIClient {
             title: mr.title,
             projectPath: mr.projectPath,
             webURL: sameHostURL(mr.web_url, baseURL: instance.normalizedBaseURL),
+            sourceBranch: mr.source_branch ?? "",
+            targetBranch: mr.target_branch ?? "",
+            defaultBranch: defaultBranch,
             stages: [],
             approvals: ApprovalSummary(
                 approvedBy: [],
@@ -287,6 +313,58 @@ actor GitLabAPIClient {
             createdAt: Self.parseGitLabDate(mr.created_at),
             updatedAt: Self.parseGitLabDate(mr.updated_at)
         )
+    }
+
+    private struct APIProject: Decodable {
+        let default_branch: String?
+    }
+
+    /// One request per distinct target project. Failures leave that project unnamed
+    /// so stacking still works from source/target links alone.
+    private func fetchDefaultBranches(
+        baseURL: String,
+        projectIDs: Set<Int>,
+        token: String
+    ) async -> [Int: String] {
+        var result: [Int: String] = [:]
+        await withTaskGroup(of: (Int, String?).self) { group in
+            for projectID in projectIDs {
+                group.addTask {
+                    (projectID, await self.fetchDefaultBranch(
+                        baseURL: baseURL,
+                        projectID: projectID,
+                        token: token
+                    ))
+                }
+            }
+            for await (projectID, branch) in group {
+                if let branch {
+                    result[projectID] = branch
+                }
+            }
+        }
+        return result
+    }
+
+    private func fetchDefaultBranch(
+        baseURL: String,
+        projectID: Int,
+        token: String
+    ) async -> String? {
+        let url: URL
+        do {
+            url = try apiURL(baseURL, path: "/api/v4/projects/\(projectID)")
+        } catch {
+            return nil
+        }
+        do {
+            let project: APIProject = try await get(url, baseURL: baseURL, token: token)
+            let branch = project.default_branch?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return branch.isEmpty ? nil : branch
+        } catch {
+            gDebugPrint("default branch failed for project \(projectID):", error.localizedDescription)
+            return nil
+        }
     }
 
     private struct ResolvedPipeline {
