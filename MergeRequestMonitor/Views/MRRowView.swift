@@ -3,6 +3,7 @@
 //  MergeRequestMonitor
 //
 
+import AppKit
 import SwiftUI
 import components_swiftUI
 
@@ -11,11 +12,18 @@ struct MRRowView: View {
     let showInstanceLabel: Bool
     var titleParsing: TitleParsing = .conventionalCommits
     var showThreadBadges: Bool = true
+    /// True when this row is nested under another MR it is stacked on.
+    var isStacked: Bool = false
+    /// False for a ready stack parent shown in Draft: title and copy actions only.
+    var showsDetails: Bool = true
     var onOpen: (() -> Void)? = nil
     var onOpenURL: ((URL) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPressed = false
+    @State private var isHovered = false
+    @State private var copiedField: CopyableField?
+    @State private var copiedResetTask: Task<Void, Never>?
 
     private var parsedTitle: ParsedMergeRequestTitle {
         ParsedMergeRequestTitle.parse(rawTitle: item.title, parsing: titleParsing)
@@ -34,6 +42,9 @@ struct MRRowView: View {
         Button(action: { onOpen?() }) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: Primitive.Layout.spacingSm) {
+                    if isStacked {
+                        StackBranchMark()
+                    }
                     Text(parsedTitle.displayTitle)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Semantic.Colors.notBlack)
@@ -43,42 +54,50 @@ struct MRRowView: View {
                         .hoverTooltip(parsedTitle.fullTitle)
                         .accessibilityLabel(parsedTitle.fullTitle)
 
-                    // Reserves the title row's trailing space. The live dots are an overlay
-                    // so their buttons are not nested inside this one.
-                    StatusLine(
-                        stages: item.isMerged ? [] : item.stages,
-                        approvals: item.isMerged ? nil : item.approvals,
-                        mergeIndicator: item.mergeIndicator,
-                        interactive: false
-                    )
-                    .hidden()
+                    if showsDetails {
+                        // Reserves the title row's trailing space. The live dots are an overlay
+                        // so their buttons are not nested inside this one.
+                        StatusLine(
+                            stages: item.isMerged ? [] : item.stages,
+                            approvals: item.isMerged ? nil : item.approvals,
+                            mergeIndicator: item.mergeIndicator,
+                            interactive: false
+                        )
+                        .hidden()
+                    }
                 }
 
-                HStack(spacing: Primitive.Layout.spacingSm) {
-                    if showInstanceLabel {
-                        Text(item.instanceLabel)
-                    }
-                    Text(item.projectPath)
-                        .layoutPriority(-1)
-                    Text("!\(item.iid)")
-                        .fixedSize()
-                        .layoutPriority(1)
-                    if parsedTitle.isDraft {
-                        DraftBadge()
+                if showsDetails {
+                    HStack(spacing: Primitive.Layout.spacingSm) {
+                        if isStacked {
+                            Color.clear
+                                .frame(width: StackBranchMark.width, height: 1)
+                        }
+                        if showInstanceLabel {
+                            Text(item.instanceLabel)
+                        }
+                        Text(item.projectPath)
+                            .layoutPriority(-1)
+                        Text("!\(item.iid)")
                             .fixedSize()
                             .layoutPriority(1)
+                        if parsedTitle.isDraft {
+                            DraftBadge()
+                                .fixedSize()
+                                .layoutPriority(1)
+                        }
+                        if showThreadBadges, item.threads.hasThreads {
+                            ThreadsBadge(threads: item.threads)
+                                .fixedSize()
+                                .layoutPriority(1)
+                        }
                     }
-                    if showThreadBadges, item.threads.hasThreads {
-                        ThreadsBadge(threads: item.threads)
-                            .fixedSize()
-                            .layoutPriority(1)
-                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Semantic.Colors.textDisabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(Semantic.Colors.textDisabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             // The title is often narrower than the row. Without this, macOS hit-tests
@@ -86,9 +105,14 @@ struct MRRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(CardPressStyle(isPressed: $isPressed))
-        .accessibilityHint("Open in browser")
+        .accessibilityHint(isStacked ? "Stacked merge request. Open in browser" : "Open in browser")
         .overlay(alignment: .topTrailing) {
-            statusLine
+            if showsDetails {
+                statusLine
+            }
+        }
+        .overlay(alignment: showsDetails ? .bottomTrailing : .trailing) {
+            copyActions
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -96,12 +120,126 @@ struct MRRowView: View {
             RoundedRectangle(cornerRadius: Primitive.Layout.borderRadiusSm, style: .continuous)
                 .fill(Semantic.Colors.notBlack.opacity(isPressed ? 0.1 : 0))
         }
+        .onPointerHover($isHovered)
+        .onChange(of: isHovered) { hovered in
+            if !hovered {
+                copiedResetTask?.cancel()
+                copiedField = nil
+            }
+        }
         .scaleEffect(!reduceMotion && isPressed ? 0.98 : 1)
         .animation(.easeOut(duration: isPressed ? 0.09 : 0.18), value: isPressed)
         .padding(.horizontal, -8)
         .padding(.vertical, -6)
         .accessibilityElement(children: .contain)
-        .accessibilityValue(item.mergeIndicator.tooltip)
+        .accessibilityValue(showsDetails ? item.mergeIndicator.tooltip : "")
+    }
+
+    @ViewBuilder
+    private var copyActions: some View {
+        if item.webURL != nil || !item.sourceBranch.isEmpty {
+            HStack(spacing: 3) {
+                if item.webURL != nil {
+                    copyButton(.link)
+                }
+                if !item.sourceBranch.isEmpty {
+                    copyButton(.branch)
+                }
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background {
+                Capsule()
+                    .fill(Semantic.Colors.backgroundColorElevated)
+            }
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+        }
+    }
+
+    private func copyButton(_ field: CopyableField) -> some View {
+        let copied = copiedField == field
+        return Button {
+            copy(field)
+        } label: {
+            Image(systemName: copied ? "checkmark" : field.systemImage)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Semantic.Colors.notBlack)
+                .padding(.horizontal, 2)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverTooltip(copied ? "Copied" : field.label)
+        .accessibilityLabel(copied ? "Copied" : field.label)
+    }
+
+    private func copy(_ field: CopyableField) {
+        let value: String
+        switch field {
+        case .link:
+            guard let url = item.webURL else { return }
+            value = url.absoluteString
+        case .branch:
+            value = item.sourceBranch
+            guard !value.isEmpty else { return }
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        copiedField = field
+        copiedResetTask?.cancel()
+        copiedResetTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            if copiedField == field {
+                copiedField = nil
+            }
+        }
+    }
+}
+
+private enum CopyableField: Equatable {
+    case link
+    case branch
+
+    var systemImage: String {
+        switch self {
+        case .link: return "link"
+        case .branch: return "arrow.triangle.branch"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .link: return "Copy link"
+        case .branch: return "Copy branch"
+        }
+    }
+}
+
+/// Corner mark that shows a row is stacked under the merge request above it.
+private struct StackBranchMark: View {
+    static let width: CGFloat = 10
+
+    var body: some View {
+        StackBranchShape()
+            .stroke(
+                Semantic.Colors.textDisabled,
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+            )
+            .frame(width: Self.width, height: 12)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct StackBranchShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let insetX = rect.minX + 1
+        path.move(to: CGPoint(x: insetX, y: rect.minY))
+        path.addLine(to: CGPoint(x: insetX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }
 

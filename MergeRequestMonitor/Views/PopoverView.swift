@@ -122,19 +122,24 @@ struct PopoverView: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Primitive.Layout.spacingLg) {
-                    ForEach(orderedMergeRequests) { item in
-                        MRRowView(
-                            item: item,
-                            showInstanceLabel: showsInstanceLabels,
-                            titleParsing: settings.titleParsing,
-                            showThreadBadges: settings.showThreadBadges,
-                            onOpen: {
-                                openOnInstance(item.webURL, instanceID: item.instanceID)
-                            },
-                            onOpenURL: { url in
-                                openOnInstance(url, instanceID: item.instanceID)
+                    ForEach(displayedSections) { section in
+                        VStack(alignment: .leading, spacing: Primitive.Layout.spacingSm) {
+                            Text(section.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Semantic.Colors.textDisabled)
+                                .textCase(.uppercase)
+                                .accessibilityAddTraits(.isHeader)
+
+                            VStack(alignment: .leading, spacing: Primitive.Layout.spacingLg) {
+                                ForEach(section.rows) { row in
+                                    mergeRequestRow(
+                                        row.item,
+                                        isStacked: row.isStacked,
+                                        showsDetails: row.showsDetails
+                                    )
+                                }
                             }
-                        )
+                        }
                     }
 
                     if !coordinator.errors.isEmpty {
@@ -160,8 +165,35 @@ struct PopoverView: View {
         settings.hasConfiguredInstance || !coordinator.mergeRequests.isEmpty
     }
 
-    private var orderedMergeRequests: [MergeRequestItem] {
-        settings.sortOrder.ordered(coordinator.mergeRequests)
+    private var displayedSections: [DisplayedSection] {
+        let sections = settings.sortOrder.sectioned(coordinator.mergeRequests)
+        return [
+            DisplayedSection(kind: .merged, groups: sections.merged),
+            DisplayedSection(kind: .mergeQueue, groups: sections.mergeQueue),
+            DisplayedSection(kind: .ready, groups: sections.ready),
+            DisplayedSection(kind: .draft, groups: sections.draft)
+        ].filter { !$0.rows.isEmpty }
+    }
+
+    private func mergeRequestRow(
+        _ item: MergeRequestItem,
+        isStacked: Bool,
+        showsDetails: Bool
+    ) -> some View {
+        MRRowView(
+            item: item,
+            showInstanceLabel: showsInstanceLabels,
+            titleParsing: settings.titleParsing,
+            showThreadBadges: settings.showThreadBadges,
+            isStacked: isStacked,
+            showsDetails: showsDetails,
+            onOpen: {
+                openOnInstance(item.webURL, instanceID: item.instanceID)
+            },
+            onOpenURL: { url in
+                openOnInstance(url, instanceID: item.instanceID)
+            }
+        )
     }
 
     private var showsInstanceLabels: Bool {
@@ -189,6 +221,47 @@ struct PopoverView: View {
         }
         return "Updated \(seconds) seconds ago"
     }
+}
+
+private struct DisplayedSection: Identifiable {
+    enum Kind: String {
+        case merged
+        case mergeQueue
+        case ready
+        case draft
+
+        var title: String {
+            switch self {
+            case .merged: return "Merged"
+            case .mergeQueue: return "Merge queue"
+            case .ready: return "Ready"
+            case .draft: return "Draft"
+            }
+        }
+    }
+
+    let kind: Kind
+    let rows: [DisplayedMergeRequest]
+
+    var id: String { kind.rawValue }
+    var title: String { kind.title }
+
+    init(kind: Kind, groups: [MergeRequestGroup]) {
+        self.kind = kind
+        self.rows = groups.flatMap { group in
+            [DisplayedMergeRequest(kind: kind, item: group.root, isStacked: false)]
+                + group.stacked.map { DisplayedMergeRequest(kind: kind, item: $0, isStacked: true) }
+        }
+    }
+}
+
+private struct DisplayedMergeRequest: Identifiable {
+    let kind: DisplayedSection.Kind
+    let item: MergeRequestItem
+    let isStacked: Bool
+    var id: String { "\(kind.rawValue)-\(item.id)" }
+    /// Ready parents in Draft are context for the stack, not a second full row.
+    var showsDetails: Bool { kind != .draft || item.isDraft }
 }
 
 /// Refresh control. The system arrow’s circular stroke sits below the middle of its bounds,

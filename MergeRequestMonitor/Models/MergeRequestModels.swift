@@ -134,6 +134,12 @@ struct MergeRequestItem: Identifiable, Equatable, Codable {
     let title: String
     let projectPath: String
     let webURL: URL?
+    /// Branch this merge request merges from.
+    let sourceBranch: String
+    /// Branch this merge request merges into.
+    let targetBranch: String
+    /// The target project's default branch (`main`, `develop`, …). Empty if unknown.
+    let defaultBranch: String
     let stages: [PipelineStage]
     let approvals: ApprovalSummary
     let threads: ThreadSummary
@@ -146,6 +152,32 @@ struct MergeRequestItem: Identifiable, Equatable, Codable {
     let updatedAt: Date
 
     var isMerged: Bool { mergeIndicator == .merged }
+
+    var isInMergeQueue: Bool { mergeIndicator == .mergeTrain }
+
+    /// GitLab marks a draft by prefixing the title with `Draft:`.
+    var isDraft: Bool {
+        ParsedMergeRequestTitle.parse(rawTitle: title, parsing: .none).isDraft
+    }
+
+    /// Open, not a draft, and not already in the merge queue or merged.
+    var isReady: Bool { !isMerged && !isInMergeQueue && !isDraft }
+}
+
+/// A top-level merge request and the MRs stacked on it, flattened to one indent.
+struct MergeRequestGroup: Identifiable, Equatable {
+    let root: MergeRequestItem
+    let stacked: [MergeRequestItem]
+
+    var id: String { root.id }
+}
+
+/// Popover sections in display order. A mixed stack can appear in more than one.
+struct MergeRequestSections: Equatable {
+    let merged: [MergeRequestGroup]
+    let mergeQueue: [MergeRequestGroup]
+    let ready: [MergeRequestGroup]
+    let draft: [MergeRequestGroup]
 }
 
 /// How a merge request title is shortened on the row.
@@ -217,6 +249,20 @@ enum MergeRequestSortOrder: String, Codable, CaseIterable {
         }
     }
 
+    /// Groups stacked merge requests under the MR they ultimately land on.
+    /// Nested stacks stay at one indent: `root`, then every descendant.
+    /// Top-level groups keep `ordered` order of their roots; stacked children
+    /// are pulled out of that list and shown under the parent.
+    func grouped(_ items: [MergeRequestItem]) -> [MergeRequestGroup] {
+        MergeRequestStack.groups(from: items, sortOrder: self)
+    }
+
+    /// Merged, then Merge queue, then Ready, then Draft. Mixed stacks are split
+    /// so each section keeps only its own MRs; Draft still shows the stack's top-level MR.
+    func sectioned(_ items: [MergeRequestItem]) -> MergeRequestSections {
+        MergeRequestStack.sections(from: items, sortOrder: self)
+    }
+
     private var newestFirst: Bool {
         switch self {
         case .createdNewestFirst, .modifiedNewestFirst: return true
@@ -228,6 +274,199 @@ enum MergeRequestSortOrder: String, Codable, CaseIterable {
         switch self {
         case .createdNewestFirst, .createdOldestFirst: return item.createdAt
         case .modifiedNewestFirst, .modifiedOldestFirst: return item.mergedAt ?? item.updatedAt
+        }
+    }
+}
+
+/// Stacks MRs whose target branch is another authored MR's source branch in the same project.
+/// An MR that targets the project's default branch is always a stack root, even when
+/// another MR uses that default branch as its source.
+enum MergeRequestStack {
+    static func groups(
+        from items: [MergeRequestItem],
+        sortOrder: MergeRequestSortOrder
+    ) -> [MergeRequestGroup] {
+        let sorted = sortOrder.ordered(items)
+        let parents = ParentIndex(items: sorted)
+        return makeGroups(sorted: sorted, parents: parents)
+    }
+
+    static func sections(
+        from items: [MergeRequestItem],
+        sortOrder: MergeRequestSortOrder
+    ) -> MergeRequestSections {
+        let sorted = sortOrder.ordered(items)
+        let parents = ParentIndex(items: sorted)
+        let groups = makeGroups(sorted: sorted, parents: parents)
+
+        var merged: [MergeRequestGroup] = []
+        var mergeQueue: [MergeRequestGroup] = []
+        var ready: [MergeRequestGroup] = []
+        var draft: [MergeRequestGroup] = []
+        for group in groups {
+            merged.append(contentsOf: matchingGroups(from: group, parents: parents) { $0.isMerged })
+            mergeQueue.append(contentsOf: matchingGroups(from: group, parents: parents) { $0.isInMergeQueue })
+            ready.append(contentsOf: matchingGroups(from: group, parents: parents) { $0.isReady })
+            if let draftGroup = draftGroup(from: group) {
+                draft.append(draftGroup)
+            }
+        }
+        return MergeRequestSections(
+            merged: merged,
+            mergeQueue: mergeQueue,
+            ready: ready,
+            draft: draft
+        )
+    }
+
+    private static func makeGroups(
+        sorted: [MergeRequestItem],
+        parents: ParentIndex
+    ) -> [MergeRequestGroup] {
+        var assigned: Set<String> = []
+        var groups: [MergeRequestGroup] = []
+        for item in sorted {
+            if assigned.contains(item.id) { continue }
+            let root = parents.root(of: item)
+            // Keep the parent's place in the sorted list. A newer stacked MR
+            // must not drag the whole stack to the top ahead of a sibling root.
+            if root.id != item.id { continue }
+            let stacked = parents.descendants(of: root)
+            assigned.insert(root.id)
+            stacked.forEach { assigned.insert($0.id) }
+            groups.append(MergeRequestGroup(root: root, stacked: stacked))
+        }
+        return groups
+    }
+
+    /// Members of the stack that match, still nested under a matching ancestor.
+    /// A non-matching root promotes each matching subtree into its own group.
+    private static func matchingGroups(
+        from group: MergeRequestGroup,
+        parents: ParentIndex,
+        matching: (MergeRequestItem) -> Bool
+    ) -> [MergeRequestGroup] {
+        if matching(group.root) {
+            return [MergeRequestGroup(
+                root: group.root,
+                stacked: parents.descendants(of: group.root, matching: matching)
+            )]
+        }
+        return parents.subgroups(from: group.root, matching: matching)
+    }
+
+    /// Open drafts in the stack, under the original top-level MR even when that MR is ready or merged.
+    private static func draftGroup(from group: MergeRequestGroup) -> MergeRequestGroup? {
+        let stackedDrafts = group.stacked.filter { $0.isDraft && !$0.isMerged && !$0.isInMergeQueue }
+        let rootIsOpenDraft = group.root.isDraft && !group.root.isMerged && !group.root.isInMergeQueue
+        guard rootIsOpenDraft || !stackedDrafts.isEmpty else { return nil }
+        return MergeRequestGroup(root: group.root, stacked: stackedDrafts)
+    }
+
+    /// Looks up parent/child links by instance, project, and branch name.
+    private struct ParentIndex {
+        private struct BranchKey: Hashable {
+            let instanceID: UUID
+            let projectID: Int
+            let branch: String
+        }
+
+        private let parentByID: [String: MergeRequestItem]
+        private let childrenByParentID: [String: [MergeRequestItem]]
+        private let sorted: [MergeRequestItem]
+
+        init(items: [MergeRequestItem]) {
+            sorted = items
+
+            var bySource: [BranchKey: [MergeRequestItem]] = [:]
+            for item in items {
+                guard let branch = Self.normalized(item.sourceBranch) else { continue }
+                bySource[BranchKey(instanceID: item.instanceID, projectID: item.projectID, branch: branch), default: []].append(item)
+            }
+
+            var parentByID: [String: MergeRequestItem] = [:]
+            var childrenByParentID: [String: [MergeRequestItem]] = [:]
+            for item in items {
+                guard let target = Self.normalized(item.targetBranch) else { continue }
+                // Landing on the repo default branch is a top-level MR, not a stack child.
+                if let defaultBranch = Self.normalized(item.defaultBranch), target == defaultBranch {
+                    continue
+                }
+                let key = BranchKey(instanceID: item.instanceID, projectID: item.projectID, branch: target)
+                guard let parent = bySource[key]?.first(where: { $0.id != item.id }) else { continue }
+                parentByID[item.id] = parent
+                childrenByParentID[parent.id, default: []].append(item)
+            }
+            self.parentByID = parentByID
+            self.childrenByParentID = childrenByParentID
+        }
+
+        func root(of item: MergeRequestItem) -> MergeRequestItem {
+            var current = item
+            var seen: Set<String> = [item.id]
+            while let parent = parentByID[current.id] {
+                if seen.contains(parent.id) {
+                    return sorted.first { seen.contains($0.id) } ?? current
+                }
+                seen.insert(parent.id)
+                current = parent
+            }
+            return current
+        }
+
+        func descendants(of root: MergeRequestItem) -> [MergeRequestItem] {
+            descendants(of: root, matching: { _ in true })
+        }
+
+        func descendants(
+            of root: MergeRequestItem,
+            matching: (MergeRequestItem) -> Bool
+        ) -> [MergeRequestItem] {
+            var result: [MergeRequestItem] = []
+            var visiting: Set<String> = [root.id]
+            func walk(_ item: MergeRequestItem) {
+                for child in childrenByParentID[item.id] ?? [] {
+                    if visiting.contains(child.id) { continue }
+                    visiting.insert(child.id)
+                    if matching(child) {
+                        result.append(child)
+                    }
+                    walk(child)
+                }
+            }
+            walk(root)
+            return result
+        }
+
+        /// Matching MRs whose parent chain to `root` does not match, each with its
+        /// matching descendants stacked underneath.
+        func subgroups(
+            from root: MergeRequestItem,
+            matching: (MergeRequestItem) -> Bool
+        ) -> [MergeRequestGroup] {
+            var groups: [MergeRequestGroup] = []
+            var visiting: Set<String> = [root.id]
+            func walk(_ item: MergeRequestItem) {
+                for child in childrenByParentID[item.id] ?? [] {
+                    if visiting.contains(child.id) { continue }
+                    visiting.insert(child.id)
+                    if matching(child) {
+                        groups.append(MergeRequestGroup(
+                            root: child,
+                            stacked: descendants(of: child, matching: matching)
+                        ))
+                    } else {
+                        walk(child)
+                    }
+                }
+            }
+            walk(root)
+            return groups
+        }
+
+        private static func normalized(_ branch: String) -> String? {
+            let trimmed = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
     }
 }

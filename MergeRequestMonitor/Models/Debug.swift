@@ -54,6 +54,7 @@ enum DebugMergeRequestFixtures {
             createdAt: date(daysAgo: 6),
             updatedAt: date(hoursAgo: 1),
             webURL: "https://gitlab.acme.example/platform/design-system/-/merge_requests/86",
+            sourceBranch: "docs/status-color-mapping",
             stages: [],
             approvals: ApprovalSummary(
                 approvedBy: ["Alex Kim", "Chris Adeyemi", "Noah Berg"],
@@ -73,6 +74,7 @@ enum DebugMergeRequestFixtures {
             createdAt: date(daysAgo: 2),
             updatedAt: date(daysAgo: 3),
             webURL: "https://gitlab.acme.example/platform/mobile-ios/-/merge_requests/128",
+            sourceBranch: "chore/ios-17-minimum",
             stages: stages([
                 ("build", .success),
                 ("test", .success),
@@ -82,6 +84,85 @@ enum DebugMergeRequestFixtures {
                 approvedBy: [],
                 approvalsRequired: 1,
                 approvalsLeft: 1,
+                userHasApproved: false
+            ),
+            threads: .empty
+        ),
+        // Mixed stack, listed and timestamped out of chain order so grouping
+        // cannot be mistaken for "newest child first". Chain is:
+        //   1842 (ready, 4d) ← 1837 (ready, 5d) ← 1845 (draft, 1h) ← 1848 (ready, 1d)
+        // Ready keeps 1842 / 1837 / 1848. Draft still leads with 1842.
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 1842,
+            iid: 1848,
+            title: "feat(api): replay failed webhook deliveries from metrics",
+            projectPath: "acme/payments-api",
+            createdAt: date(daysAgo: 1),
+            updatedAt: date(daysAgo: 4),
+            webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1848",
+            sourceBranch: "feature/webhook-replay",
+            targetBranch: "feature/webhook-metrics",
+            defaultBranch: "develop",
+            stages: stages([
+                ("build", .success),
+                ("test", .paused)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: 2,
+                approvalsLeft: 2,
+                userHasApproved: false
+            ),
+            threads: .empty
+        ),
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 1842,
+            iid: 1830,
+            title: "feat(api): ship webhook retries for settlement events",
+            projectPath: "acme/payments-api",
+            createdAt: date(daysAgo: 3),
+            updatedAt: date(hoursAgo: 2),
+            webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1830",
+            sourceBranch: "feat/webhook-retries",
+            targetBranch: "develop",
+            defaultBranch: "develop",
+            stages: [],
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: nil,
+                approvalsLeft: nil,
+                userHasApproved: false
+            ),
+            threads: .empty,
+            mergeIndicator: .merged,
+            mergedAt: date(hoursAgo: 2)
+        ),
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 1842,
+            iid: 1845,
+            title: "Draft: feat(api): record webhook delivery metrics",
+            projectPath: "acme/payments-api",
+            createdAt: date(hoursAgo: 1),
+            updatedAt: date(hoursAgo: 1),
+            webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1845",
+            sourceBranch: "feature/webhook-metrics",
+            targetBranch: "feature/webhook-race",
+            defaultBranch: "develop",
+            stages: stages([
+                ("build", .success),
+                ("test", .success),
+                ("lint", .inProgress)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: 2,
+                approvalsLeft: 2,
                 userHasApproved: false
             ),
             threads: .empty
@@ -96,6 +177,9 @@ enum DebugMergeRequestFixtures {
             createdAt: date(daysAgo: 4),
             updatedAt: date(hoursAgo: 5),
             webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1842",
+            sourceBranch: "feature/webhooks",
+            targetBranch: "develop",
+            defaultBranch: "develop",
             stages: stages([
                 ("build", .success),
                 ("test", .success),
@@ -114,33 +198,15 @@ enum DebugMergeRequestFixtures {
             instanceID: gitlabComID,
             instanceLabel: "GitLab.com",
             projectID: 1842,
-            iid: 1830,
-            title: "feat(api): ship webhook retries for settlement events",
-            projectPath: "acme/payments-api",
-            createdAt: date(daysAgo: 3),
-            updatedAt: date(hoursAgo: 2),
-            webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1830",
-            stages: [],
-            approvals: ApprovalSummary(
-                approvedBy: [],
-                approvalsRequired: nil,
-                approvalsLeft: nil,
-                userHasApproved: false
-            ),
-            threads: .empty,
-            mergeIndicator: .merged,
-            mergedAt: date(hoursAgo: 2)
-        ),
-        item(
-            instanceID: gitlabComID,
-            instanceLabel: "GitLab.com",
-            projectID: 1842,
             iid: 1837,
             title: "Fix the race when two settlement webhooks arrive in the same second",
             projectPath: "acme/payments-api",
-            createdAt: date(daysAgo: 1),
+            createdAt: date(daysAgo: 5),
             updatedAt: date(daysAgo: 2),
             webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/1837",
+            sourceBranch: "feature/webhook-race",
+            targetBranch: "feature/webhooks",
+            defaultBranch: "develop",
             stages: stages([
                 ("prepare", .created),
                 ("lint", .manual),
@@ -169,6 +235,7 @@ enum DebugMergeRequestFixtures {
             createdAt: date(hoursAgo: 5),
             updatedAt: date(daysAgo: 5),
             webURL: "https://gitlab.com/acme/web-app/-/merge_requests/310",
+            sourceBranch: "draft/pipeline-skeleton",
             stages: stages([
                 ("build", .success),
                 ("test", .inProgress)
@@ -191,6 +258,7 @@ enum DebugMergeRequestFixtures {
             createdAt: date(hoursAgo: 1),
             updatedAt: date(daysAgo: 4),
             webURL: "https://gitlab.com/groups/commerce/storefront/checkout-service/-/merge_requests/44",
+            sourceBranch: "chore/retire-legacy-checkout-flag",
             stages: stages([
                 ("build", .cancelled),
                 ("notify", .cancelled)
@@ -292,6 +360,9 @@ enum DebugMergeRequestFixtures {
         createdAt: Date,
         updatedAt: Date,
         webURL: String,
+        sourceBranch: String = "",
+        targetBranch: String = "main",
+        defaultBranch: String = "main",
         stages: [PipelineStage],
         approvals: ApprovalSummary,
         threads: ThreadSummary,
@@ -307,6 +378,9 @@ enum DebugMergeRequestFixtures {
             title: title,
             projectPath: projectPath,
             webURL: URL(string: webURL),
+            sourceBranch: sourceBranch,
+            targetBranch: targetBranch,
+            defaultBranch: defaultBranch,
             stages: stages,
             approvals: approvals,
             threads: threads,

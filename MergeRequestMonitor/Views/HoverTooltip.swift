@@ -23,6 +23,14 @@ extension View {
     func hoverTooltip(_ text: String) -> some View {
         modifier(HoverTooltipModifier(text: text))
     }
+
+    /// Hover that works while this menu-bar app is inactive.
+    ///
+    /// SwiftUI `.onHover` uses tracking areas, which are not delivered to an
+    /// inactive accessory app. This polls `NSEvent.mouseLocation` instead.
+    func onPointerHover(_ isHovered: Binding<Bool>) -> some View {
+        modifier(PointerHoverModifier(isHovered: isHovered))
+    }
 }
 
 /// Reads the control's SwiftUI layout frame, which is where the tip should sit.
@@ -42,6 +50,20 @@ struct HoverTooltipModifier: ViewModifier {
 /// on the same turn; this covers the gap before that teardown.
 func hideHoverTooltips() {
     HoverTooltipController.shared.hideForPanelClose()
+    PointerHoverController.shared.hideForPanelClose()
+}
+
+/// SwiftUI `.global` is top-left / Y-down in the window content; AppKit is bottom-left.
+private func screenRect(fromSwiftUIGlobal globalFrame: CGRect, in window: NSWindow) -> NSRect? {
+    guard globalFrame.width > 0.5, globalFrame.height > 0.5 else { return nil }
+    let height = window.contentView?.bounds.height ?? window.frame.height
+    let inWindow = NSRect(
+        x: globalFrame.origin.x,
+        y: height - globalFrame.origin.y - globalFrame.height,
+        width: globalFrame.width,
+        height: globalFrame.height
+    )
+    return window.convertToScreen(inWindow)
 }
 
 private struct HoverTooltipAnchor: NSViewRepresentable {
@@ -86,17 +108,8 @@ private final class HoverTooltipAnchorView: NSView {
         return rect.contains(mouse) ? rect : nil
     }
 
-    /// SwiftUI `.global` is top-left / Y-down in the window content; AppKit is bottom-left.
     func layoutScreenRect(in window: NSWindow) -> NSRect? {
-        guard globalFrame.width > 0.5, globalFrame.height > 0.5 else { return nil }
-        let height = window.contentView?.bounds.height ?? window.frame.height
-        let inWindow = NSRect(
-            x: globalFrame.origin.x,
-            y: height - globalFrame.origin.y - globalFrame.height,
-            width: globalFrame.width,
-            height: globalFrame.height
-        )
-        return window.convertToScreen(inWindow)
+        screenRect(fromSwiftUIGlobal: globalFrame, in: window)
     }
 
     override func viewDidMoveToWindow() {
@@ -438,5 +451,157 @@ private final class TooltipBox: NSView {
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: style,
         ]
+    }
+}
+
+// MARK: - Pointer hover
+
+private struct PointerHoverModifier: ViewModifier {
+    @Binding var isHovered: Bool
+
+    func body(content: Content) -> some View {
+        content.background {
+            GeometryReader { proxy in
+                PointerHoverAnchor(isHovered: $isHovered, globalFrame: proxy.frame(in: .global))
+            }
+        }
+    }
+}
+
+private struct PointerHoverAnchor: NSViewRepresentable {
+    @Binding var isHovered: Bool
+    var globalFrame: CGRect
+
+    func makeNSView(context: Context) -> PointerHoverAnchorView {
+        let view = PointerHoverAnchorView()
+        view.isHovered = $isHovered
+        view.globalFrame = globalFrame
+        return view
+    }
+
+    func updateNSView(_ nsView: PointerHoverAnchorView, context: Context) {
+        nsView.isHovered = $isHovered
+        nsView.globalFrame = globalFrame
+        if nsView.window != nil {
+            PointerHoverController.shared.register(nsView, isHovered: $isHovered)
+        }
+    }
+}
+
+private final class PointerHoverAnchorView: NSView {
+    var isHovered: Binding<Bool> = .constant(false)
+    var globalFrame: CGRect = .zero
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func hitScreenRect(containing mouse: NSPoint) -> NSRect? {
+        guard let window, let rect = screenRect(fromSwiftUIGlobal: globalFrame, in: window) else {
+            return nil
+        }
+        return rect.contains(mouse) ? rect : nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            PointerHoverController.shared.register(self, isHovered: isHovered)
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            PointerHoverController.shared.unregister(ObjectIdentifier(self))
+        }
+    }
+
+    deinit {
+        PointerHoverController.shared.unregister(ObjectIdentifier(self))
+    }
+}
+
+/// Polls the cursor while cards are on screen. Same constraint as hover tooltips:
+/// tracking areas are not delivered to an inactive accessory app.
+private final class PointerHoverController {
+    static let shared = PointerHoverController()
+
+    private struct Anchor {
+        var isHovered: Binding<Bool>
+        weak var view: PointerHoverAnchorView?
+    }
+
+    private var anchors: [ObjectIdentifier: Anchor] = [:]
+    private var timer: Timer?
+    private var hoveredID: ObjectIdentifier?
+
+    func register(_ view: PointerHoverAnchorView, isHovered: Binding<Bool>) {
+        anchors[ObjectIdentifier(view)] = Anchor(isHovered: isHovered, view: view)
+        startTimerIfNeeded()
+    }
+
+    func unregister(_ id: ObjectIdentifier) {
+        if let anchor = anchors.removeValue(forKey: id), anchor.isHovered.wrappedValue {
+            anchor.isHovered.wrappedValue = false
+        }
+        if hoveredID == id {
+            hoveredID = nil
+        }
+        if anchors.isEmpty {
+            stopTimer()
+        }
+    }
+
+    func hideForPanelClose() {
+        for (_, anchor) in anchors where anchor.isHovered.wrappedValue {
+            anchor.isHovered.wrappedValue = false
+        }
+        hoveredID = nil
+    }
+
+    private func startTimerIfNeeded() {
+        guard timer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+        timer.tolerance = 1.0 / 120.0
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func tick() {
+        anchors = anchors.filter { $0.value.view != nil }
+        guard !anchors.isEmpty else {
+            hideForPanelClose()
+            stopTimer()
+            return
+        }
+
+        let mouse = NSEvent.mouseLocation
+        var bestID: ObjectIdentifier?
+        var bestArea: CGFloat = .greatestFiniteMagnitude
+        for (id, anchor) in anchors {
+            guard let view = anchor.view, view.window != nil else { continue }
+            guard let onScreen = view.hitScreenRect(containing: mouse) else { continue }
+            let area = onScreen.width * onScreen.height
+            if area < bestArea {
+                bestArea = area
+                bestID = id
+            }
+        }
+
+        if hoveredID != bestID {
+            if let hoveredID, let previous = anchors[hoveredID], previous.isHovered.wrappedValue {
+                previous.isHovered.wrappedValue = false
+            }
+            hoveredID = bestID
+            if let bestID, let next = anchors[bestID], !next.isHovered.wrappedValue {
+                next.isHovered.wrappedValue = true
+            }
+        }
     }
 }
