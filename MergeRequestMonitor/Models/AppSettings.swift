@@ -34,6 +34,20 @@ final class AppSettings: ObservableObject {
             UserDefaults.standard.set(showRecentlyMerged, forKey: Self.showRecentlyMergedKey)
         }
     }
+    /// Which list the popover should open on. Last selected uses `lastPopoverTab`.
+    @Published var popoverTabPreference: PopoverTabPreference {
+        didSet {
+            guard popoverTabPreference != oldValue else { return }
+            UserDefaults.standard.set(popoverTabPreference.rawValue, forKey: Self.popoverTabPreferenceKey)
+        }
+    }
+    /// The tab last chosen in the popover. Used when `popoverTabPreference` is `.lastSelected`.
+    @Published var lastPopoverTab: MergeRequestListKind {
+        didSet {
+            guard lastPopoverTab != oldValue else { return }
+            UserDefaults.standard.set(lastPopoverTab.rawValue, forKey: Self.lastPopoverTabKey)
+        }
+    }
     /// Nil until the user chooses one. Nothing is registered in that case.
     @Published var menuShortcut: MenuShortcut? {
         didSet {
@@ -51,6 +65,8 @@ final class AppSettings: ObservableObject {
     private static let sortOrderKey = "gitlabMonitor.sortOrder"
     private static let showThreadBadgesKey = "gitlabMonitor.showThreadBadges"
     private static let showRecentlyMergedKey = "gitlabMonitor.showRecentlyMerged"
+    private static let popoverTabPreferenceKey = "gitlabMonitor.popoverTabPreference"
+    private static let lastPopoverTabKey = "gitlabMonitor.lastPopoverTab"
     private static let menuShortcutKey = "gitlabMonitor.menuShortcut"
     private var keychain = KeychainStore()
 
@@ -67,6 +83,12 @@ final class AppSettings: ObservableObject {
         }
         showThreadBadges = UserDefaults.standard.object(forKey: Self.showThreadBadgesKey) as? Bool ?? true
         showRecentlyMerged = UserDefaults.standard.object(forKey: Self.showRecentlyMergedKey) as? Bool ?? true
+        popoverTabPreference = PopoverTabPreference(
+            rawValue: UserDefaults.standard.string(forKey: Self.popoverTabPreferenceKey) ?? ""
+        ) ?? .authored
+        lastPopoverTab = MergeRequestListKind(
+            rawValue: UserDefaults.standard.string(forKey: Self.lastPopoverTabKey) ?? ""
+        ) ?? .authored
         // Drop the old train-animation preference; the merge mark replaced it.
         UserDefaults.standard.removeObject(forKey: "gitlabMonitor.showMergeTrainAnimation")
         if let data = UserDefaults.standard.data(forKey: Self.menuShortcutKey),

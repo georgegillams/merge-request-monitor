@@ -11,9 +11,25 @@ struct PopoverView: View {
     @ObservedObject var coordinator: RefreshCoordinator
     @ObservedObject var settings: AppSettings
     var onOpenSettings: () -> Void
+    @State private var selectedTab: MergeRequestListKind
 
     /// Matches `NSPopover` on macOS 27, whose frame resolves to a 20pt corner.
     private static let cornerRadius: CGFloat = 20
+
+    init(
+        coordinator: RefreshCoordinator,
+        settings: AppSettings,
+        onOpenSettings: @escaping () -> Void
+    ) {
+        self.coordinator = coordinator
+        self.settings = settings
+        self.onOpenSettings = onOpenSettings
+        _selectedTab = State(
+            initialValue: settings.popoverTabPreference.initialTab(
+                lastSelected: settings.lastPopoverTab
+            )
+        )
+    }
 
     private var panelShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
@@ -22,6 +38,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if showsTabs {
+                tabs
+            }
             content
         }
         .frame(width: 420)
@@ -34,6 +53,11 @@ struct PopoverView: View {
         .environment(\.statusSymbolsOutdated, coordinator.isStale)
         .onAppear {
             coordinator.refresh(reason: .popover)
+        }
+        .onChange(of: selectedTab) { tab in
+            if settings.lastPopoverTab != tab {
+                settings.lastPopoverTab = tab
+            }
         }
     }
 
@@ -77,9 +101,23 @@ struct PopoverView: View {
         .padding(.vertical, 10)
     }
 
+    private var tabs: some View {
+        Picker(selection: $selectedTab) {
+            ForEach(MergeRequestListKind.allCases, id: \.self) { kind in
+                Text(kind.tabTitle).tag(kind)
+            }
+        } label: {
+            Text("Merge request list")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, Primitive.Layout.spacingBase)
+        .padding(.bottom, 10)
+    }
+
     @ViewBuilder
     private var content: some View {
-        if coordinator.mergeRequests.isEmpty && !settings.hasConfiguredInstance {
+        if displayedMergeRequests.isEmpty && !settings.hasConfiguredInstance {
             EmptyStateView(
                 systemImage: "server.rack",
                 title: "Connect GitLab",
@@ -87,7 +125,7 @@ struct PopoverView: View {
                 actionTitle: "Open Settings",
                 action: onOpenSettings
             )
-        } else if coordinator.mergeRequests.isEmpty && coordinator.isRefreshing {
+        } else if displayedMergeRequests.isEmpty && coordinator.isRefreshing {
             VStack(spacing: Primitive.Layout.spacingSm) {
                 ProgressView()
                     .controlSize(.small)
@@ -97,8 +135,8 @@ struct PopoverView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 160)
             .padding()
-        } else if coordinator.mergeRequests.isEmpty {
-            if let error = coordinator.lastError {
+        } else if displayedMergeRequests.isEmpty {
+            if selectedTabLoadFailed, let error = coordinator.lastError {
                 EmptyStateView(
                     systemImage: "exclamationmark.triangle",
                     title: "Couldn’t load merge requests",
@@ -111,9 +149,7 @@ struct PopoverView: View {
                 EmptyStateView(
                     systemImage: "checkmark.circle",
                     title: "You’re all clear",
-                    message: settings.showRecentlyMerged
-                        ? "No open or recently merged merge requests authored by you on the configured GitLab instances."
-                        : "No open merge requests authored by you on the configured GitLab instances.",
+                    message: selectedTab.emptyMessage(showRecentlyMerged: settings.showRecentlyMerged),
                     actionTitle: nil,
                     action: nil,
                     iconColor: Semantic.Colors.statusSuccess
@@ -162,11 +198,35 @@ struct PopoverView: View {
     /// Refresh and the timestamp stay available once there is something to refresh,
     /// including the sample list shown by the G_DEBUG scheme before a token is saved.
     private var showsRefreshControls: Bool {
-        settings.hasConfiguredInstance || !coordinator.mergeRequests.isEmpty
+        settings.hasConfiguredInstance
+            || !coordinator.mergeRequests.isEmpty
+            || !coordinator.reviewedMergeRequests.isEmpty
+    }
+
+    private var showsTabs: Bool {
+        showsRefreshControls
+    }
+
+    private var displayedMergeRequests: [MergeRequestItem] {
+        switch selectedTab {
+        case .authored:
+            return coordinator.mergeRequests
+        case .requestedReviews:
+            return coordinator.reviewedMergeRequests
+        }
+    }
+
+    private var selectedTabLoadFailed: Bool {
+        switch selectedTab {
+        case .authored:
+            return coordinator.authoredLoadFailed
+        case .requestedReviews:
+            return coordinator.reviewedLoadFailed
+        }
     }
 
     private var displayedSections: [DisplayedSection] {
-        let sections = settings.sortOrder.sectioned(coordinator.mergeRequests)
+        let sections = settings.sortOrder.sectioned(displayedMergeRequests)
         return [
             DisplayedSection(kind: .merged, groups: sections.merged),
             DisplayedSection(kind: .mergeQueue, groups: sections.mergeQueue),
@@ -198,7 +258,7 @@ struct PopoverView: View {
 
     private var showsInstanceLabels: Bool {
         if settings.instances.count > 1 { return true }
-        return Set(coordinator.mergeRequests.map(\.instanceLabel)).count > 1
+        return Set(displayedMergeRequests.map(\.instanceLabel)).count > 1
     }
 
     /// Opens a GitLab page in the browser only when it is on that instance's host.

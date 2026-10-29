@@ -161,7 +161,7 @@ struct SettingsView: View {
                 Toggle(isOn: $settings.showRecentlyMerged) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show recently merged")
-                        Text("Include merge requests you merged in the last 12 hours.")
+                        Text("Include merge requests merged in the last 12 hours.")
                             .font(.caption)
                             .foregroundStyle(Semantic.Colors.textDisabled)
                     }
@@ -175,6 +175,20 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Sort order")
                         Text("Order by when a merge request was opened or last edited.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker(selection: $settings.popoverTabPreference) {
+                    ForEach(PopoverTabPreference.allCases, id: \.self) { preference in
+                        Text(preference.label).tag(preference)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Default popover tab")
+                        Text("Open on your merge requests, requested reviews, or whichever you last viewed.")
                             .font(.caption)
                             .foregroundStyle(Semantic.Colors.textDisabled)
                     }

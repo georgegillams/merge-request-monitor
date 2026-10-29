@@ -164,14 +164,16 @@ extension AppDelegate {
     /// Remeasure when MR list / loading / errors change so height tracks content while open.
     private func observeStatusPanelContentSize() {
         statusPanelSizeCancellable?.cancel()
-        statusPanelSizeCancellable = Publishers.CombineLatest3(
+        statusPanelSizeCancellable = Publishers.CombineLatest4(
             refreshCoordinator.$mergeRequests,
+            refreshCoordinator.$reviewedMergeRequests,
             refreshCoordinator.$isRefreshing,
             refreshCoordinator.$errors
         )
+        .combineLatest(settings.$lastPopoverTab)
         .dropFirst()
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] _, _, _ in
+        .sink { [weak self] _ in
             // Wait for SwiftUI to commit the new tree before measuring.
             DispatchQueue.main.async {
                 self?.updateStatusPanelSize()

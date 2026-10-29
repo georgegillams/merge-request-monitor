@@ -180,6 +180,63 @@ struct MergeRequestSections: Equatable {
     let draft: [MergeRequestGroup]
 }
 
+/// Which merge request list is shown in the popover.
+enum MergeRequestListKind: String, Codable, CaseIterable {
+    case authored
+    case requestedReviews
+
+    var tabTitle: String {
+        switch self {
+        case .authored: return "My merge requests"
+        case .requestedReviews: return "Requested reviews"
+        }
+    }
+
+    /// GitLab `scope` query value for this list.
+    var gitLabScope: String {
+        switch self {
+        case .authored: return "created_by_me"
+        case .requestedReviews: return "reviews_for_me"
+        }
+    }
+
+    func emptyMessage(showRecentlyMerged: Bool) -> String {
+        switch self {
+        case .authored:
+            return showRecentlyMerged
+                ? "No open or recently merged merge requests authored by you on the configured GitLab instances."
+                : "No open merge requests authored by you on the configured GitLab instances."
+        case .requestedReviews:
+            return showRecentlyMerged
+                ? "No open or recently merged merge requests waiting for your review on the configured GitLab instances."
+                : "No open merge requests waiting for your review on the configured GitLab instances."
+        }
+    }
+}
+
+/// Which list the popover should open on.
+enum PopoverTabPreference: String, Codable, CaseIterable {
+    case authored
+    case requestedReviews
+    case lastSelected
+
+    var label: String {
+        switch self {
+        case .authored: return "My merge requests"
+        case .requestedReviews: return "Requested reviews"
+        case .lastSelected: return "Last selected"
+        }
+    }
+
+    func initialTab(lastSelected: MergeRequestListKind) -> MergeRequestListKind {
+        switch self {
+        case .authored: return .authored
+        case .requestedReviews: return .requestedReviews
+        case .lastSelected: return lastSelected
+        }
+    }
+}
+
 /// How a merge request title is shortened on the row.
 /// Settings shows conventional commits as a switch. Add cases here for other formats.
 enum TitleParsing: String, Codable, CaseIterable {
