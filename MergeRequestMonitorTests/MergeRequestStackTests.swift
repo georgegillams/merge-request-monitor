@@ -295,6 +295,13 @@ final class PopoverTabPreferenceTests: XCTestCase {
         XCTAssertEqual(MergeRequestListKind.requestedReviews.gitLabScope, "reviews_for_me")
     }
 
+    func testRequestedReviewsUseAShorterRecentlyMergedWindow() {
+        XCTAssertEqual(MergeRequestListKind.authored.recentlyMergedWindowHours, 12)
+        XCTAssertEqual(MergeRequestListKind.requestedReviews.recentlyMergedWindowHours, 4)
+        XCTAssertEqual(MergeRequestListKind.authored.recentlyMergedWindow, 12 * 60 * 60)
+        XCTAssertEqual(MergeRequestListKind.requestedReviews.recentlyMergedWindow, 4 * 60 * 60)
+    }
+
     func testRequestedEmptyMessageFollowsRecentlyMergedSetting() {
         XCTAssertTrue(
             MergeRequestListKind.requestedReviews.emptyMessage(showRecentlyMerged: true)
@@ -303,6 +310,82 @@ final class PopoverTabPreferenceTests: XCTestCase {
         XCTAssertFalse(
             MergeRequestListKind.requestedReviews.emptyMessage(showRecentlyMerged: false)
                 .contains("recently merged")
+        )
+    }
+}
+
+final class MergeRequestListFiltersTests: XCTestCase {
+    func testAuthoredDefaultsIncludeMergedAndDrafts() {
+        XCTAssertEqual(
+            MergeRequestListFilters.authoredDefault,
+            MergeRequestListFilters(showRecentlyMerged: true, showDrafts: true)
+        )
+    }
+
+    func testRequestedReviewDefaultsHideMergedAndDrafts() {
+        XCTAssertEqual(
+            MergeRequestListFilters.requestedReviewsDefault,
+            MergeRequestListFilters(showRecentlyMerged: false, showDrafts: false)
+        )
+    }
+
+    func testApplyingHidesMergedAndDraftsIndependently() {
+        let ready = item(id: "ready", title: "Ready", mergeIndicator: .none)
+        let draft = item(id: "draft", title: "Draft: Hidden", mergeIndicator: .none)
+        let merged = item(id: "merged", title: "Merged", mergeIndicator: .merged)
+        let items = [ready, draft, merged]
+
+        XCTAssertEqual(
+            MergeRequestListFilters(showRecentlyMerged: true, showDrafts: true)
+                .applying(to: items).map(\.id),
+            ["ready", "draft", "merged"]
+        )
+        XCTAssertEqual(
+            MergeRequestListFilters(showRecentlyMerged: false, showDrafts: true)
+                .applying(to: items).map(\.id),
+            ["ready", "draft"]
+        )
+        XCTAssertEqual(
+            MergeRequestListFilters(showRecentlyMerged: true, showDrafts: false)
+                .applying(to: items).map(\.id),
+            ["ready", "merged"]
+        )
+        XCTAssertEqual(
+            MergeRequestListFilters(showRecentlyMerged: false, showDrafts: false)
+                .applying(to: items).map(\.id),
+            ["ready"]
+        )
+    }
+
+    private func item(
+        id: String,
+        title: String,
+        mergeIndicator: MergeIndicator
+    ) -> MergeRequestItem {
+        MergeRequestItem(
+            id: id,
+            instanceID: UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!,
+            instanceLabel: "GitLab",
+            projectID: 1,
+            iid: 1,
+            title: title,
+            projectPath: "acme/app",
+            webURL: nil,
+            sourceBranch: "feature",
+            targetBranch: "develop",
+            defaultBranch: "develop",
+            stages: [],
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: nil,
+                approvalsLeft: nil,
+                userHasApproved: false
+            ),
+            threads: .empty,
+            mergeIndicator: mergeIndicator,
+            mergedAt: mergeIndicator == .merged ? Date(timeIntervalSince1970: 1) : nil,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1)
         )
     }
 }

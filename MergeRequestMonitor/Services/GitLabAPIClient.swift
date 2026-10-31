@@ -44,7 +44,7 @@ actor GitLabAPIClient {
         )
     }
 
-    /// Open MRs for `kind`, and optionally matching MRs merged in the last 12 hours.
+    /// Open MRs for `kind`, and optionally matching MRs merged within that list's recent window.
     func fetchMergeRequests(
         instance: GitLabInstanceConfig,
         token: String,
@@ -66,7 +66,8 @@ actor GitLabAPIClient {
             merged = try await listRecentlyMergedMergeRequests(
                 baseURL: instance.normalizedBaseURL,
                 token: token,
-                scope: scope
+                scope: scope,
+                window: kind.recentlyMergedWindow
             )
         } else {
             merged = []
@@ -114,8 +115,6 @@ actor GitLabAPIClient {
     }
 
     // MARK: - Private
-
-    private static let recentlyMergedWindow: TimeInterval = 12 * 60 * 60
 
     private struct APIMergeRequest: Decodable {
         let id: Int
@@ -214,9 +213,10 @@ actor GitLabAPIClient {
     private func listRecentlyMergedMergeRequests(
         baseURL: String,
         token: String,
-        scope: String
+        scope: String,
+        window: TimeInterval
     ) async throws -> [APIMergeRequest] {
-        let cutoff = Date().addingTimeInterval(-Self.recentlyMergedWindow)
+        let cutoff = Date().addingTimeInterval(-window)
         guard var components = URLComponents(string: "\(baseURL)/api/v4/merge_requests") else {
             throw GitLabAPIError.invalidURL
         }
