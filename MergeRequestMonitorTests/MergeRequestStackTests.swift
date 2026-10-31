@@ -263,3 +263,46 @@ final class MergeRequestStackTests: XCTestCase {
         )
     }
 }
+
+final class PopoverTabPreferenceTests: XCTestCase {
+    func testAuthoredPreferenceOpensOnAuthoredRegardlessOfLastTab() {
+        XCTAssertEqual(
+            PopoverTabPreference.authored.initialTab(lastSelected: .requestedReviews),
+            .authored
+        )
+    }
+
+    func testRequestedPreferenceOpensOnReviewsRegardlessOfLastTab() {
+        XCTAssertEqual(
+            PopoverTabPreference.requestedReviews.initialTab(lastSelected: .authored),
+            .requestedReviews
+        )
+    }
+
+    func testLastSelectedPreferenceUsesStoredTab() {
+        XCTAssertEqual(
+            PopoverTabPreference.lastSelected.initialTab(lastSelected: .requestedReviews),
+            .requestedReviews
+        )
+        XCTAssertEqual(
+            PopoverTabPreference.lastSelected.initialTab(lastSelected: .authored),
+            .authored
+        )
+    }
+
+    func testListKindUsesGitLabReviewerScope() {
+        XCTAssertEqual(MergeRequestListKind.authored.gitLabScope, "created_by_me")
+        XCTAssertEqual(MergeRequestListKind.requestedReviews.gitLabScope, "reviews_for_me")
+    }
+
+    func testRequestedEmptyMessageFollowsRecentlyMergedSetting() {
+        XCTAssertTrue(
+            MergeRequestListKind.requestedReviews.emptyMessage(showRecentlyMerged: true)
+                .contains("recently merged")
+        )
+        XCTAssertFalse(
+            MergeRequestListKind.requestedReviews.emptyMessage(showRecentlyMerged: false)
+                .contains("recently merged")
+        )
+    }
+}

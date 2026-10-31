@@ -36,7 +36,12 @@ final class RefreshCoordinator: ObservableObject {
     static let pollInterval: TimeInterval = 5 * 60 // 5 minutes
 
     @Published private(set) var mergeRequests: [MergeRequestItem] = []
+    @Published private(set) var reviewedMergeRequests: [MergeRequestItem] = []
     @Published private(set) var errors: [InstanceError] = []
+    /// True when every instance failed to load authored merge requests.
+    @Published private(set) var authoredLoadFailed = false
+    /// True when every instance failed to load requested reviews.
+    @Published private(set) var reviewedLoadFailed = false
     /// Instances whose most recent fetch succeeded. Empty until that result arrives,
     /// so a first attempt is not shown as connected while it is still in flight.
     @Published private(set) var connectedInstanceIDs: Set<UUID> = []
@@ -53,6 +58,9 @@ final class RefreshCoordinator: ObservableObject {
     private var wakeObserver: NSObjectProtocol?
     private var settingsCancellable: AnyCancellable?
     private var refreshTask: Task<Void, Never>?
+    /// Last settings snapshot that actually triggered a GitLab fetch.
+    /// Tab, title-parsing, and similar display-only changes must not refetch.
+    private var lastFetchTrigger: FetchTrigger?
 
     var lastError: String? {
         errors.first?.message
@@ -64,7 +72,10 @@ final class RefreshCoordinator: ObservableObject {
         settingsCancellable = settings.objectWillChange
             .debounce(for: .milliseconds(400), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                self?.refresh()
+                guard let self else { return }
+                let trigger = self.makeFetchTrigger()
+                guard trigger != self.lastFetchTrigger else { return }
+                self.refresh()
             }
     }
 
@@ -101,6 +112,7 @@ final class RefreshCoordinator: ObservableObject {
 
     func refresh(reason: RefreshReason = .manual) {
         _ = reason
+        lastFetchTrigger = makeFetchTrigger()
         refreshTask?.cancel()
         refreshTask = Task { await self.performRefresh() }
     }
@@ -112,12 +124,18 @@ final class RefreshCoordinator: ObservableObject {
     @MainActor
     private func applyResults(
         collected: [MergeRequestItem],
+        reviewed: [MergeRequestItem],
         collectedErrors: [InstanceError],
-        connectedInstanceIDs: Set<UUID>
+        connectedInstanceIDs: Set<UUID>,
+        authoredLoadFailed: Bool,
+        reviewedLoadFailed: Bool
     ) {
         mergeRequests = settings.sortOrder.ordered(collected)
+        reviewedMergeRequests = settings.sortOrder.ordered(reviewed)
         errors = collectedErrors
         self.connectedInstanceIDs = connectedInstanceIDs
+        self.authoredLoadFailed = authoredLoadFailed
+        self.reviewedLoadFailed = reviewedLoadFailed
         markUpdated()
         isRefreshing = false
     }
@@ -133,7 +151,7 @@ final class RefreshCoordinator: ObservableObject {
         staleTimer = nil
 
         guard let lastUpdated else {
-            isStale = !mergeRequests.isEmpty
+            isStale = !mergeRequests.isEmpty || !reviewedMergeRequests.isEmpty
             return
         }
 
@@ -167,11 +185,21 @@ final class RefreshCoordinator: ObservableObject {
             let fixtures = DebugMergeRequestFixtures.mergeRequests.filter {
                 showRecentlyMerged || !$0.isMerged
             }
-            gDebugPrint("RefreshCoordinator using \(fixtures.count) mock merge requests")
+            let reviewedFixtures = DebugMergeRequestFixtures.reviewedMergeRequests.filter {
+                showRecentlyMerged || !$0.isMerged
+            }
+            gDebugPrint(
+                "RefreshCoordinator using \(fixtures.count) authored and \(reviewedFixtures.count) review mock merge requests"
+            )
             await applyResults(
                 collected: fixtures,
+                reviewed: reviewedFixtures,
                 collectedErrors: DebugMergeRequestFixtures.errors,
-                connectedInstanceIDs: Set(fixtures.map(\.instanceID))
+                connectedInstanceIDs: Set(
+                    (fixtures + reviewedFixtures).map(\.instanceID)
+                ),
+                authoredLoadFailed: false,
+                reviewedLoadFailed: false
             )
             return
         }
@@ -188,8 +216,11 @@ final class RefreshCoordinator: ObservableObject {
         guard !targets.isEmpty else {
             await MainActor.run {
                 mergeRequests = []
+                reviewedMergeRequests = []
                 errors = []
                 connectedInstanceIDs = []
+                authoredLoadFailed = false
+                reviewedLoadFailed = false
                 markUpdated()
                 isRefreshing = false
             }
@@ -197,54 +228,40 @@ final class RefreshCoordinator: ObservableObject {
         }
 
         var collected: [MergeRequestItem] = []
+        var reviewedCollected: [MergeRequestItem] = []
         var collectedErrors: [InstanceError] = []
         var connectedIDs: Set<UUID> = []
+        var authoredSucceeded = false
+        var reviewedSucceeded = false
 
-        await withTaskGroup(of: Result<(UUID, [MergeRequestItem]), InstanceError>.self) { group in
+        await withTaskGroup(of: InstanceFetch.self) { group in
             for (instance, lookup) in targets {
                 let client = self.client
                 group.addTask {
-                    let token: String
-                    switch lookup {
-                    case .missing, .locked:
-                        return .failure(
-                            InstanceError(
-                                id: instance.id,
-                                instanceLabel: instance.displayLabel,
-                                message: "Missing bearer token",
-                                kind: .missingCredentials
-                            )
-                        )
-                    case .value(let stored):
-                        token = stored
-                    }
-                    do {
-                        let mrs = try await client.fetchAuthoredMergeRequests(
-                            instance: instance,
-                            token: token,
-                            sortOrder: sortOrder,
-                            includeRecentlyMerged: showRecentlyMerged
-                        )
-                        return .success((instance.id, mrs))
-                    } catch {
-                        return .failure(
-                            InstanceError(
-                                id: instance.id,
-                                instanceLabel: instance.displayLabel,
-                                message: error.localizedDescription
-                            )
-                        )
-                    }
+                    await Self.fetchInstance(
+                        instance: instance,
+                        lookup: lookup,
+                        client: client,
+                        sortOrder: sortOrder,
+                        showRecentlyMerged: showRecentlyMerged
+                    )
                 }
             }
 
             for await result in group {
-                if Task.isCancelled { return }
-                switch result {
-                case .success(let (instanceID, mrs)):
-                    connectedIDs.insert(instanceID)
-                    collected.append(contentsOf: mrs)
-                case .failure(let error):
+                if Task.isCancelled { break }
+                collected.append(contentsOf: result.authored)
+                reviewedCollected.append(contentsOf: result.reviewed)
+                if result.connected {
+                    connectedIDs.insert(result.instanceID)
+                }
+                if result.authoredSucceeded {
+                    authoredSucceeded = true
+                }
+                if result.reviewedSucceeded {
+                    reviewedSucceeded = true
+                }
+                if let error = result.error {
                     collectedErrors.append(error)
                 }
             }
@@ -257,8 +274,188 @@ final class RefreshCoordinator: ObservableObject {
 
         await applyResults(
             collected: collected,
+            reviewed: reviewedCollected,
             collectedErrors: collectedErrors,
-            connectedInstanceIDs: connectedIDs
+            connectedInstanceIDs: connectedIDs,
+            authoredLoadFailed: !authoredSucceeded,
+            reviewedLoadFailed: !reviewedSucceeded
         )
+    }
+
+    private struct InstanceFetch {
+        let instanceID: UUID
+        let authored: [MergeRequestItem]
+        let reviewed: [MergeRequestItem]
+        let error: InstanceError?
+        let connected: Bool
+        let authoredSucceeded: Bool
+        let reviewedSucceeded: Bool
+    }
+
+    private static func fetchInstance(
+        instance: GitLabInstanceConfig,
+        lookup: TokenLookup,
+        client: GitLabAPIClient,
+        sortOrder: MergeRequestSortOrder,
+        showRecentlyMerged: Bool
+    ) async -> InstanceFetch {
+        let token: String
+        switch lookup {
+        case .missing, .locked:
+            return InstanceFetch(
+                instanceID: instance.id,
+                authored: [],
+                reviewed: [],
+                error: InstanceError(
+                    id: instance.id,
+                    instanceLabel: instance.displayLabel,
+                    message: "Missing bearer token",
+                    kind: .missingCredentials
+                ),
+                connected: false,
+                authoredSucceeded: false,
+                reviewedSucceeded: false
+            )
+        case .value(let stored):
+            token = stored
+        }
+
+        async let authoredAttempt = fetchList(
+            client: client,
+            instance: instance,
+            token: token,
+            sortOrder: sortOrder,
+            showRecentlyMerged: showRecentlyMerged,
+            kind: .authored
+        )
+        async let reviewedAttempt = fetchList(
+            client: client,
+            instance: instance,
+            token: token,
+            sortOrder: sortOrder,
+            showRecentlyMerged: showRecentlyMerged,
+            kind: .requestedReviews
+        )
+        let authored = await authoredAttempt
+        let reviewed = await reviewedAttempt
+
+        switch (authored, reviewed) {
+        case (.success(let authoredMRs), .success(let reviewedMRs)):
+            return InstanceFetch(
+                instanceID: instance.id,
+                authored: authoredMRs,
+                reviewed: reviewedMRs,
+                error: nil,
+                connected: true,
+                authoredSucceeded: true,
+                reviewedSucceeded: true
+            )
+        case (.success(let authoredMRs), .failure(let error)):
+            return InstanceFetch(
+                instanceID: instance.id,
+                authored: authoredMRs,
+                reviewed: [],
+                error: InstanceError(
+                    id: instance.id,
+                    instanceLabel: instance.displayLabel,
+                    message: error.localizedDescription
+                ),
+                connected: true,
+                authoredSucceeded: true,
+                reviewedSucceeded: false
+            )
+        case (.failure(let error), .success(let reviewedMRs)):
+            return InstanceFetch(
+                instanceID: instance.id,
+                authored: [],
+                reviewed: reviewedMRs,
+                error: InstanceError(
+                    id: instance.id,
+                    instanceLabel: instance.displayLabel,
+                    message: error.localizedDescription
+                ),
+                connected: true,
+                authoredSucceeded: false,
+                reviewedSucceeded: true
+            )
+        case (.failure(let error), .failure):
+            return InstanceFetch(
+                instanceID: instance.id,
+                authored: [],
+                reviewed: [],
+                error: InstanceError(
+                    id: instance.id,
+                    instanceLabel: instance.displayLabel,
+                    message: error.localizedDescription
+                ),
+                connected: false,
+                authoredSucceeded: false,
+                reviewedSucceeded: false
+            )
+        }
+    }
+
+    private static func fetchList(
+        client: GitLabAPIClient,
+        instance: GitLabInstanceConfig,
+        token: String,
+        sortOrder: MergeRequestSortOrder,
+        showRecentlyMerged: Bool,
+        kind: MergeRequestListKind
+    ) async -> Result<[MergeRequestItem], Error> {
+        do {
+            let items = try await client.fetchMergeRequests(
+                instance: instance,
+                token: token,
+                sortOrder: sortOrder,
+                includeRecentlyMerged: showRecentlyMerged,
+                kind: kind
+            )
+            return .success(items)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Values that require a GitLab refetch. Display-only settings are omitted.
+    private struct FetchTrigger: Equatable {
+        struct Instance: Equatable {
+            let id: UUID
+            let url: String
+            let label: String
+            let tokenFingerprint: Int
+        }
+
+        let instances: [Instance]
+        let sortOrder: MergeRequestSortOrder
+        let showRecentlyMerged: Bool
+    }
+
+    private func makeFetchTrigger() -> FetchTrigger {
+        FetchTrigger(
+            instances: settings.instances.map { instance in
+                FetchTrigger.Instance(
+                    id: instance.id,
+                    url: instance.baseURL,
+                    label: instance.label,
+                    tokenFingerprint: Self.tokenFingerprint(settings.lookupToken(for: instance.id))
+                )
+            },
+            sortOrder: settings.sortOrder,
+            showRecentlyMerged: settings.showRecentlyMerged
+        )
+    }
+
+    private static func tokenFingerprint(_ lookup: TokenLookup) -> Int {
+        switch lookup {
+        case .missing:
+            return 0
+        case .locked:
+            return 1
+        case .value(let token):
+            var hasher = Hasher()
+            hasher.combine(token)
+            return hasher.finalize()
+        }
     }
 }

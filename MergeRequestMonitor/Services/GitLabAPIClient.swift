@@ -44,25 +44,29 @@ actor GitLabAPIClient {
         )
     }
 
-    /// Authored open MRs, and optionally authored MRs merged in the last 12 hours.
-    func fetchAuthoredMergeRequests(
+    /// Open MRs for `kind`, and optionally matching MRs merged in the last 12 hours.
+    func fetchMergeRequests(
         instance: GitLabInstanceConfig,
         token: String,
         sortOrder: MergeRequestSortOrder,
-        includeRecentlyMerged: Bool
+        includeRecentlyMerged: Bool,
+        kind: MergeRequestListKind
     ) async throws -> [MergeRequestItem] {
+        let scope = kind.gitLabScope
         async let openMRs = listMergeRequests(
             baseURL: instance.normalizedBaseURL,
             token: token,
             state: "opened",
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            scope: scope
         )
         let open = try await openMRs
         let merged: [APIMergeRequest]
         if includeRecentlyMerged {
             merged = try await listRecentlyMergedMergeRequests(
                 baseURL: instance.normalizedBaseURL,
-                token: token
+                token: token,
+                scope: scope
             )
         } else {
             merged = []
@@ -189,14 +193,15 @@ actor GitLabAPIClient {
         baseURL: String,
         token: String,
         state: String,
-        sortOrder: MergeRequestSortOrder
+        sortOrder: MergeRequestSortOrder,
+        scope: String
     ) async throws -> [APIMergeRequest] {
         guard var components = URLComponents(string: "\(baseURL)/api/v4/merge_requests") else {
             throw GitLabAPIError.invalidURL
         }
         // The page is capped at 50, so the query field and direction have to match the setting.
         components.queryItems = [
-            URLQueryItem(name: "scope", value: "created_by_me"),
+            URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "per_page", value: "50"),
             URLQueryItem(name: "order_by", value: sortOrder.gitLabOrderBy),
@@ -208,14 +213,15 @@ actor GitLabAPIClient {
 
     private func listRecentlyMergedMergeRequests(
         baseURL: String,
-        token: String
+        token: String,
+        scope: String
     ) async throws -> [APIMergeRequest] {
         let cutoff = Date().addingTimeInterval(-Self.recentlyMergedWindow)
         guard var components = URLComponents(string: "\(baseURL)/api/v4/merge_requests") else {
             throw GitLabAPIError.invalidURL
         }
         components.queryItems = [
-            URLQueryItem(name: "scope", value: "created_by_me"),
+            URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: "merged"),
             URLQueryItem(name: "per_page", value: "50"),
             URLQueryItem(name: "order_by", value: "merged_at"),

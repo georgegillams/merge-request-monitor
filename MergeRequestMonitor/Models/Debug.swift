@@ -37,8 +37,8 @@ public var isGDebugScheme: Bool {
 }
 
 #if DEBUG
-/// Sample authored merge requests for the G_DEBUG scheme.
-/// Each row exercises a different pipeline or approval state, across two instances.
+/// Sample merge requests for the G_DEBUG scheme.
+/// Authored and review lists each exercise pipeline and approval states, across two instances.
 enum DebugMergeRequestFixtures {
     private static let gitlabComID = UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!
     private static let acmeID = UUID(uuidString: "A1000000-0000-4000-8000-000000000002")!
@@ -270,6 +270,130 @@ enum DebugMergeRequestFixtures {
                 userHasApproved: false
             ),
             threads: .empty
+        )
+    ]
+
+    /// MRs assigned to the current user as reviewer. Distinct from `mergeRequests`
+    /// so the two popover tabs are visually different in G_DEBUG.
+    static let reviewedMergeRequests: [MergeRequestItem] = [
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 2200,
+            iid: 91,
+            title: "feat(auth): rotate session tokens before they expire",
+            projectPath: "acme/identity-service",
+            createdAt: date(daysAgo: 2),
+            updatedAt: date(hoursAgo: 3),
+            webURL: "https://gitlab.com/acme/identity-service/-/merge_requests/91",
+            sourceBranch: "feat/session-rotation",
+            stages: stages([
+                ("build", .success),
+                ("test", .success),
+                ("security", .paused)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: ["Maya Patel"],
+                approvalsRequired: 2,
+                approvalsLeft: 1,
+                userHasApproved: false
+            ),
+            threads: ThreadSummary(resolvable: 2, resolved: 0)
+        ),
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 2200,
+            iid: 94,
+            title: "Draft: test(auth): cover the session rotation grace period",
+            projectPath: "acme/identity-service",
+            createdAt: date(hoursAgo: 4),
+            updatedAt: date(hoursAgo: 4),
+            webURL: "https://gitlab.com/acme/identity-service/-/merge_requests/94",
+            sourceBranch: "test/session-rotation-grace",
+            targetBranch: "feat/session-rotation",
+            stages: stages([
+                ("build", .success),
+                ("test", .inProgress)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: 2,
+                approvalsLeft: 2,
+                userHasApproved: false
+            ),
+            threads: .empty
+        ),
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 551,
+            iid: 12,
+            title: "fix(checkout): stop double-charging when the webhook retries",
+            projectPath: "acme/payments-api",
+            createdAt: date(daysAgo: 1),
+            updatedAt: date(hoursAgo: 6),
+            webURL: "https://gitlab.com/acme/payments-api/-/merge_requests/12",
+            sourceBranch: "fix/webhook-double-charge",
+            stages: stages([
+                ("build", .success),
+                ("test", .failed),
+                ("lint", .success)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: 1,
+                approvalsLeft: 1,
+                userHasApproved: false
+            ),
+            threads: ThreadSummary(resolvable: 3, resolved: 1)
+        ),
+        item(
+            instanceID: acmeID,
+            instanceLabel: "Acme GitLab",
+            projectID: 77,
+            iid: 5,
+            title: "chore(ci): pin the runner image after the broken 2026.9 tag",
+            projectPath: "platform/ci-images",
+            createdAt: date(daysAgo: 3),
+            updatedAt: date(hoursAgo: 8),
+            webURL: "https://gitlab.acme.example/platform/ci-images/-/merge_requests/5",
+            sourceBranch: "chore/pin-runner-image",
+            stages: stages([
+                ("build", .success),
+                ("test", .success),
+                ("publish", .success)
+            ]),
+            approvals: ApprovalSummary(
+                approvedBy: ["Alex Kim", "Noah Berg"],
+                approvalsRequired: 2,
+                approvalsLeft: 0,
+                userHasApproved: true
+            ),
+            threads: ThreadSummary(resolvable: 1, resolved: 1),
+            mergeIndicator: .mergeTrain
+        ),
+        item(
+            instanceID: gitlabComID,
+            instanceLabel: "GitLab.com",
+            projectID: 880,
+            iid: 33,
+            title: "docs(api): document the refund idempotency header",
+            projectPath: "acme/developer-docs",
+            createdAt: date(daysAgo: 4),
+            updatedAt: date(hoursAgo: 3),
+            webURL: "https://gitlab.com/acme/developer-docs/-/merge_requests/33",
+            sourceBranch: "docs/refund-idempotency",
+            stages: [],
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: nil,
+                approvalsLeft: nil,
+                userHasApproved: false
+            ),
+            threads: .empty,
+            mergeIndicator: .merged,
+            mergedAt: date(hoursAgo: 3)
         )
     ]
 
