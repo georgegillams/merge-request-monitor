@@ -23,7 +23,7 @@ struct SettingsView: View {
             form
             creditFooter
         }
-        .frame(minWidth: 560, minHeight: 620)
+        .frame(minWidth: 560, minHeight: 720)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             // Grouped forms paint the system window grey. The previous pure-black
@@ -140,6 +140,34 @@ struct SettingsView: View {
                         .foregroundStyle(Semantic.Colors.statusDestructive)
                 }
 
+                Picker(selection: $settings.popoverTabPreference) {
+                    ForEach(PopoverTabPreference.allCases, id: \.self) { preference in
+                        Text(preference.label).tag(preference)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Default popover tab")
+                        Text("Open on your merge requests, requested reviews, or whichever you last viewed.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker(selection: $settings.sortOrder) {
+                    ForEach(MergeRequestSortOrder.allCases, id: \.self) { order in
+                        Text(order.label).tag(order)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sort order")
+                        Text("Order by when a merge request was opened or last edited.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+                .pickerStyle(.menu)
+
                 Toggle(isOn: conventionalCommitTitles) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Conventional commit titles")
@@ -157,44 +185,16 @@ struct SettingsView: View {
                             .foregroundStyle(Semantic.Colors.textDisabled)
                     }
                 }
-
-                Toggle(isOn: $settings.showRecentlyMerged) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Show recently merged")
-                        Text("Include merge requests merged in the last 12 hours.")
-                            .font(.caption)
-                            .foregroundStyle(Semantic.Colors.textDisabled)
-                    }
-                }
-
-                Picker(selection: $settings.sortOrder) {
-                    ForEach(MergeRequestSortOrder.allCases, id: \.self) { order in
-                        Text(order.label).tag(order)
-                    }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Sort order")
-                        Text("Order by when a merge request was opened or last edited.")
-                            .font(.caption)
-                            .foregroundStyle(Semantic.Colors.textDisabled)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker(selection: $settings.popoverTabPreference) {
-                    ForEach(PopoverTabPreference.allCases, id: \.self) { preference in
-                        Text(preference.label).tag(preference)
-                    }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Default popover tab")
-                        Text("Open on your merge requests, requested reviews, or whichever you last viewed.")
-                            .font(.caption)
-                            .foregroundStyle(Semantic.Colors.textDisabled)
-                    }
-                }
-                .pickerStyle(.menu)
             }
+
+            listFiltersSection(
+                kind: .authored,
+                filters: $settings.authoredFilters
+            )
+            listFiltersSection(
+                kind: .requestedReviews,
+                filters: $settings.requestedReviewFilters
+            )
 
             Section("About") {
                 LabeledContent("Version", value: Bundle.main.menuBuildLabel)
@@ -231,6 +231,32 @@ struct SettingsView: View {
             attributed[range].underlineStyle = Text.LineStyle(pattern: .solid, color: .clear)
         }
         return attributed
+    }
+
+    @ViewBuilder
+    private func listFiltersSection(
+        kind: MergeRequestListKind,
+        filters: Binding<MergeRequestListFilters>
+    ) -> some View {
+        Section(kind.tabTitle) {
+            Toggle(isOn: filters.showRecentlyMerged) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show recently merged")
+                    Text("Include merge requests merged in the last \(kind.recentlyMergedWindowHours) hours.")
+                        .font(.caption)
+                        .foregroundStyle(Semantic.Colors.textDisabled)
+                }
+            }
+
+            Toggle(isOn: filters.showDrafts) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show drafts")
+                    Text("Include merge requests marked as drafts.")
+                        .font(.caption)
+                        .foregroundStyle(Semantic.Colors.textDisabled)
+                }
+            }
+        }
     }
 
     @discardableResult

@@ -200,6 +200,18 @@ enum MergeRequestListKind: String, Codable, CaseIterable {
         }
     }
 
+    /// How far back “recently merged” looks for this list.
+    var recentlyMergedWindow: TimeInterval {
+        TimeInterval(recentlyMergedWindowHours * 60 * 60)
+    }
+
+    var recentlyMergedWindowHours: Int {
+        switch self {
+        case .authored: return 12
+        case .requestedReviews: return 4
+        }
+    }
+
     func emptyMessage(showRecentlyMerged: Bool) -> String {
         switch self {
         case .authored:
@@ -210,6 +222,23 @@ enum MergeRequestListKind: String, Codable, CaseIterable {
             return showRecentlyMerged
                 ? "No open or recently merged merge requests waiting for your review on the configured GitLab instances."
                 : "No open merge requests waiting for your review on the configured GitLab instances."
+        }
+    }
+}
+
+/// Per-tab filters for recently merged and draft merge requests.
+struct MergeRequestListFilters: Equatable {
+    var showRecentlyMerged: Bool
+    var showDrafts: Bool
+
+    static let authoredDefault = MergeRequestListFilters(showRecentlyMerged: true, showDrafts: true)
+    static let requestedReviewsDefault = MergeRequestListFilters(showRecentlyMerged: false, showDrafts: false)
+
+    func applying(to items: [MergeRequestItem]) -> [MergeRequestItem] {
+        items.filter { item in
+            if item.isMerged { return showRecentlyMerged }
+            if item.isDraft { return showDrafts }
+            return true
         }
     }
 }

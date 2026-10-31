@@ -27,11 +27,18 @@ final class AppSettings: ObservableObject {
             UserDefaults.standard.set(showThreadBadges, forKey: Self.showThreadBadgesKey)
         }
     }
-    /// When false, merge requests merged in the last 12 hours are omitted.
-    @Published var showRecentlyMerged: Bool {
+    /// Recently merged and draft visibility for merge requests you authored.
+    @Published var authoredFilters: MergeRequestListFilters {
         didSet {
-            guard showRecentlyMerged != oldValue else { return }
-            UserDefaults.standard.set(showRecentlyMerged, forKey: Self.showRecentlyMergedKey)
+            guard authoredFilters != oldValue else { return }
+            Self.persist(authoredFilters, recentlyMergedKey: Self.authoredShowRecentlyMergedKey, draftsKey: Self.authoredShowDraftsKey)
+        }
+    }
+    /// Recently merged and draft visibility for merge requests requested of you.
+    @Published var requestedReviewFilters: MergeRequestListFilters {
+        didSet {
+            guard requestedReviewFilters != oldValue else { return }
+            Self.persist(requestedReviewFilters, recentlyMergedKey: Self.requestedShowRecentlyMergedKey, draftsKey: Self.requestedShowDraftsKey)
         }
     }
     /// Which list the popover should open on. Last selected uses `lastPopoverTab`.
@@ -64,7 +71,11 @@ final class AppSettings: ObservableObject {
     private static let titleParsingKey = "gitlabMonitor.titleParsing"
     private static let sortOrderKey = "gitlabMonitor.sortOrder"
     private static let showThreadBadgesKey = "gitlabMonitor.showThreadBadges"
-    private static let showRecentlyMergedKey = "gitlabMonitor.showRecentlyMerged"
+    /// Kept so existing “show recently merged” values apply to My merge requests.
+    private static let authoredShowRecentlyMergedKey = "gitlabMonitor.showRecentlyMerged"
+    private static let authoredShowDraftsKey = "gitlabMonitor.authoredShowDrafts"
+    private static let requestedShowRecentlyMergedKey = "gitlabMonitor.requestedShowRecentlyMerged"
+    private static let requestedShowDraftsKey = "gitlabMonitor.requestedShowDrafts"
     private static let popoverTabPreferenceKey = "gitlabMonitor.popoverTabPreference"
     private static let lastPopoverTabKey = "gitlabMonitor.lastPopoverTab"
     private static let menuShortcutKey = "gitlabMonitor.menuShortcut"
@@ -82,7 +93,16 @@ final class AppSettings: ObservableObject {
             UserDefaults.standard.set(resolvedSort.rawValue, forKey: Self.sortOrderKey)
         }
         showThreadBadges = UserDefaults.standard.object(forKey: Self.showThreadBadgesKey) as? Bool ?? true
-        showRecentlyMerged = UserDefaults.standard.object(forKey: Self.showRecentlyMergedKey) as? Bool ?? true
+        authoredFilters = Self.loadFilters(
+            recentlyMergedKey: Self.authoredShowRecentlyMergedKey,
+            draftsKey: Self.authoredShowDraftsKey,
+            defaults: .authoredDefault
+        )
+        requestedReviewFilters = Self.loadFilters(
+            recentlyMergedKey: Self.requestedShowRecentlyMergedKey,
+            draftsKey: Self.requestedShowDraftsKey,
+            defaults: .requestedReviewsDefault
+        )
         popoverTabPreference = PopoverTabPreference(
             rawValue: UserDefaults.standard.string(forKey: Self.popoverTabPreferenceKey) ?? ""
         ) ?? .authored
@@ -164,9 +184,38 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    func filters(for kind: MergeRequestListKind) -> MergeRequestListFilters {
+        switch kind {
+        case .authored: return authoredFilters
+        case .requestedReviews: return requestedReviewFilters
+        }
+    }
+
     private func persist() {
         if let data = try? JSONEncoder().encode(instances) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
+    }
+
+    private static func loadFilters(
+        recentlyMergedKey: String,
+        draftsKey: String,
+        defaults: MergeRequestListFilters
+    ) -> MergeRequestListFilters {
+        MergeRequestListFilters(
+            showRecentlyMerged: UserDefaults.standard.object(forKey: recentlyMergedKey) as? Bool
+                ?? defaults.showRecentlyMerged,
+            showDrafts: UserDefaults.standard.object(forKey: draftsKey) as? Bool
+                ?? defaults.showDrafts
+        )
+    }
+
+    private static func persist(
+        _ filters: MergeRequestListFilters,
+        recentlyMergedKey: String,
+        draftsKey: String
+    ) {
+        UserDefaults.standard.set(filters.showRecentlyMerged, forKey: recentlyMergedKey)
+        UserDefaults.standard.set(filters.showDrafts, forKey: draftsKey)
     }
 }

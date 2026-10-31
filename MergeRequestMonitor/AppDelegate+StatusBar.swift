@@ -8,8 +8,8 @@ import Combine
 import SwiftUI
 
 extension AppDelegate {
-    private static let settingsWindowDefaultSize = NSSize(width: 640, height: 520)
-    private static let settingsWindowMinimumSize = NSSize(width: 520, height: 400)
+    private static let settingsWindowDefaultSize = NSSize(width: 640, height: 720)
+    private static let settingsWindowMinimumSize = NSSize(width: 520, height: 480)
     private static let statusPanelWidth: CGFloat = 420
     private static let statusPanelMaxHeight: CGFloat = 520
     private static let statusPanelScreenMargin: CGFloat = 8

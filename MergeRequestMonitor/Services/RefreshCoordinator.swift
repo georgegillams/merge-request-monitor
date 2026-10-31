@@ -170,23 +170,24 @@ final class RefreshCoordinator: ObservableObject {
     }
 
     private func performRefresh() async {
-        let (targets, sortOrder, showRecentlyMerged) = await MainActor.run {
+        let (targets, sortOrder, authoredFilters, requestedReviewFilters) = await MainActor.run {
             (
                 settings.instances.map { instance in
                     (instance, settings.lookupToken(for: instance.id))
                 },
                 settings.sortOrder,
-                settings.showRecentlyMerged
+                settings.authoredFilters,
+                settings.requestedReviewFilters
             )
         }
 
         #if DEBUG
         if isGDebugScheme {
             let fixtures = DebugMergeRequestFixtures.mergeRequests.filter {
-                showRecentlyMerged || !$0.isMerged
+                authoredFilters.showRecentlyMerged || !$0.isMerged
             }
             let reviewedFixtures = DebugMergeRequestFixtures.reviewedMergeRequests.filter {
-                showRecentlyMerged || !$0.isMerged
+                requestedReviewFilters.showRecentlyMerged || !$0.isMerged
             }
             gDebugPrint(
                 "RefreshCoordinator using \(fixtures.count) authored and \(reviewedFixtures.count) review mock merge requests"
@@ -243,7 +244,8 @@ final class RefreshCoordinator: ObservableObject {
                         lookup: lookup,
                         client: client,
                         sortOrder: sortOrder,
-                        showRecentlyMerged: showRecentlyMerged
+                        authoredShowRecentlyMerged: authoredFilters.showRecentlyMerged,
+                        requestedShowRecentlyMerged: requestedReviewFilters.showRecentlyMerged
                     )
                 }
             }
@@ -297,7 +299,8 @@ final class RefreshCoordinator: ObservableObject {
         lookup: TokenLookup,
         client: GitLabAPIClient,
         sortOrder: MergeRequestSortOrder,
-        showRecentlyMerged: Bool
+        authoredShowRecentlyMerged: Bool,
+        requestedShowRecentlyMerged: Bool
     ) async -> InstanceFetch {
         let token: String
         switch lookup {
@@ -325,7 +328,7 @@ final class RefreshCoordinator: ObservableObject {
             instance: instance,
             token: token,
             sortOrder: sortOrder,
-            showRecentlyMerged: showRecentlyMerged,
+            showRecentlyMerged: authoredShowRecentlyMerged,
             kind: .authored
         )
         async let reviewedAttempt = fetchList(
@@ -333,7 +336,7 @@ final class RefreshCoordinator: ObservableObject {
             instance: instance,
             token: token,
             sortOrder: sortOrder,
-            showRecentlyMerged: showRecentlyMerged,
+            showRecentlyMerged: requestedShowRecentlyMerged,
             kind: .requestedReviews
         )
         let authored = await authoredAttempt
@@ -428,7 +431,8 @@ final class RefreshCoordinator: ObservableObject {
 
         let instances: [Instance]
         let sortOrder: MergeRequestSortOrder
-        let showRecentlyMerged: Bool
+        let authoredShowRecentlyMerged: Bool
+        let requestedShowRecentlyMerged: Bool
     }
 
     private func makeFetchTrigger() -> FetchTrigger {
@@ -442,7 +446,8 @@ final class RefreshCoordinator: ObservableObject {
                 )
             },
             sortOrder: settings.sortOrder,
-            showRecentlyMerged: settings.showRecentlyMerged
+            authoredShowRecentlyMerged: settings.authoredFilters.showRecentlyMerged,
+            requestedShowRecentlyMerged: settings.requestedReviewFilters.showRecentlyMerged
         )
     }
 

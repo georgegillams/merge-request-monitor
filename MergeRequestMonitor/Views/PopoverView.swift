@@ -149,7 +149,9 @@ struct PopoverView: View {
                 EmptyStateView(
                     systemImage: "checkmark.circle",
                     title: "You’re all clear",
-                    message: selectedTab.emptyMessage(showRecentlyMerged: settings.showRecentlyMerged),
+                    message: selectedTab.emptyMessage(
+                        showRecentlyMerged: selectedTabFilters.showRecentlyMerged
+                    ),
                     actionTitle: nil,
                     action: nil,
                     iconColor: Semantic.Colors.statusSuccess
@@ -207,13 +209,19 @@ struct PopoverView: View {
         showsRefreshControls
     }
 
+    private var selectedTabFilters: MergeRequestListFilters {
+        settings.filters(for: selectedTab)
+    }
+
     private var displayedMergeRequests: [MergeRequestItem] {
+        let items: [MergeRequestItem]
         switch selectedTab {
         case .authored:
-            return coordinator.mergeRequests
+            items = coordinator.mergeRequests
         case .requestedReviews:
-            return coordinator.reviewedMergeRequests
+            items = coordinator.reviewedMergeRequests
         }
+        return selectedTabFilters.applying(to: items)
     }
 
     private var selectedTabLoadFailed: Bool {
