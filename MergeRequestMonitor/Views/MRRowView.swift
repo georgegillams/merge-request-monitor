@@ -41,30 +41,11 @@ struct MRRowView: View {
     var body: some View {
         Button(action: { onOpen?() }) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .center, spacing: Primitive.Layout.spacingSm) {
+                HStack(alignment: .top, spacing: Primitive.Layout.spacingSm) {
                     if isStacked {
                         StackBranchMark()
                     }
-                    Text(parsedTitle.displayTitle)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Semantic.Colors.notBlack)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .hoverTooltip(parsedTitle.fullTitle)
-                        .accessibilityLabel(parsedTitle.fullTitle)
-
-                    if showsDetails {
-                        // Reserves the title row's trailing space. The live dots are an overlay
-                        // so their buttons are not nested inside this one.
-                        StatusLine(
-                            stages: item.isMerged ? [] : item.stages,
-                            approvals: item.isMerged ? nil : item.approvals,
-                            mergeIndicator: item.mergeIndicator,
-                            interactive: false
-                        )
-                        .hidden()
-                    }
+                    titleAndStatus
                 }
 
                 if showsDetails {
@@ -106,11 +87,6 @@ struct MRRowView: View {
         }
         .buttonStyle(CardPressStyle(isPressed: $isPressed))
         .accessibilityHint(isStacked ? "Stacked merge request. Open in browser" : "Open in browser")
-        .overlay(alignment: .topTrailing) {
-            if showsDetails {
-                statusLine
-            }
-        }
         .overlay(alignment: showsDetails ? .bottomTrailing : .trailing) {
             copyActions
         }
@@ -133,6 +109,40 @@ struct MRRowView: View {
         .padding(.vertical, -6)
         .accessibilityElement(children: .contain)
         .accessibilityValue(showsDetails ? item.mergeIndicator.tooltip : "")
+    }
+
+    /// Status shares the title row when it fits in half the width, or when a short
+    /// title plus status still fit on one line. Otherwise status moves underneath.
+    @ViewBuilder
+    private var titleAndStatus: some View {
+        let title = Text(parsedTitle.displayTitle)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Semantic.Colors.notBlack)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .hoverTooltip(parsedTitle.fullTitle)
+            .accessibilityLabel(parsedTitle.fullTitle)
+
+        if showsDetails {
+            TitleStatusRowLayout(spacing: Primitive.Layout.spacingSm) {
+                title
+                // Hidden line sizes the slot; live dots overlay so their buttons are
+                // not nested inside the row's open-MR button.
+                StatusLine(
+                    stages: item.isMerged ? [] : item.stages,
+                    approvals: item.isMerged ? nil : item.approvals,
+                    mergeIndicator: item.mergeIndicator,
+                    interactive: false
+                )
+                .hidden()
+                .overlay(alignment: .topTrailing) {
+                    statusLine
+                }
+            }
+        } else {
+            title
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     @ViewBuilder
@@ -294,6 +304,148 @@ private struct CardPressStyle: ButtonStyle {
     }
 }
 
+/// Status sits beside the title when they fit on one line — either because status is
+/// within half the row (title may truncate), or because the title is short enough that
+/// title + status fit together. Otherwise the title takes the full row and status moves
+/// underneath — still on one trailing line when it fits the full width, or wrapping
+/// across the full row if not.
+private struct TitleStatusRowLayout: Layout {
+    var spacing: CGFloat
+
+    private enum Arrangement {
+        /// Title and status on one row; status is trailing.
+        case inline(titleSize: CGSize, statusSize: CGSize)
+        /// Full-width title; status on the next line (trailing if one line, else full wrap).
+        case stacked(titleSize: CGSize, statusSize: CGSize, fillsRow: Bool)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else {
+            return subviews.first?.sizeThatFits(proposal) ?? .zero
+        }
+        let width = proposal.width ?? 0
+        switch arrangement(title: subviews[0], status: subviews[1], rowWidth: width) {
+        case let .inline(titleSize, statusSize):
+            return CGSize(width: width, height: max(titleSize.height, statusSize.height))
+        case let .stacked(titleSize, statusSize, _):
+            let gap = statusSize.height > 0 ? spacing : 0
+            return CGSize(width: width, height: titleSize.height + gap + statusSize.height)
+        }
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else {
+            subviews.first?.place(at: bounds.origin, proposal: proposal)
+            return
+        }
+        switch arrangement(title: subviews[0], status: subviews[1], rowWidth: bounds.width) {
+        case let .inline(titleSize, statusSize):
+            let titleWidth = max(0, bounds.width - spacing - statusSize.width)
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                proposal: ProposedViewSize(width: titleWidth, height: titleSize.height)
+            )
+            subviews[1].place(
+                at: CGPoint(x: bounds.maxX - statusSize.width, y: bounds.minY),
+                proposal: ProposedViewSize(statusSize)
+            )
+        case let .stacked(titleSize, statusSize, fillsRow):
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                proposal: ProposedViewSize(width: bounds.width, height: titleSize.height)
+            )
+            let statusWidth = fillsRow ? bounds.width : min(statusSize.width, bounds.width)
+            subviews[1].place(
+                at: CGPoint(
+                    x: fillsRow ? bounds.minX : bounds.maxX - statusWidth,
+                    y: bounds.minY + titleSize.height + spacing
+                ),
+                proposal: ProposedViewSize(width: statusWidth, height: statusSize.height)
+            )
+        }
+    }
+
+    private func arrangement(title: LayoutSubview, status: LayoutSubview, rowWidth: CGFloat) -> Arrangement {
+        let halfWidth = max(0, (rowWidth - spacing) / 2)
+        let idealTitle = title.sizeThatFits(.unspecified)
+        let idealStatus = status.sizeThatFits(.unspecified)
+        let titleSizeFull = title.sizeThatFits(ProposedViewSize(width: rowWidth, height: nil))
+
+        let statusFitsInHalf = idealStatus.width <= halfWidth
+        let titleAndStatusFitTogether = idealTitle.width + spacing + idealStatus.width <= rowWidth
+        if statusFitsInHalf || titleAndStatusFitTogether {
+            let titleWidth = max(0, rowWidth - spacing - idealStatus.width)
+            let titleSize = title.sizeThatFits(ProposedViewSize(width: titleWidth, height: nil))
+            return .inline(titleSize: titleSize, statusSize: idealStatus)
+        }
+
+        if idealStatus.width <= rowWidth {
+            return .stacked(titleSize: titleSizeFull, statusSize: idealStatus, fillsRow: false)
+        }
+
+        let wrappedStatus = status.sizeThatFits(ProposedViewSize(width: rowWidth, height: nil))
+        return .stacked(
+            titleSize: titleSizeFull,
+            statusSize: CGSize(width: rowWidth, height: wrappedStatus.height),
+            fillsRow: true
+        )
+    }
+}
+
+/// Lays out children left-to-right, wrapping onto new lines when the proposed width is tight.
+private struct WrappingHStackLayout: Layout {
+    var spacing: CGFloat
+    var lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrange(proposal: proposal, subviews: subviews)
+        for index in subviews.indices {
+            let frame = result.frames[index]
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    private struct Arrangement {
+        var size: CGSize
+        var frames: [CGRect]
+    }
+
+    private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> Arrangement {
+        let maxWidth = proposal.width ?? .infinity
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            usedWidth = max(usedWidth, x - spacing)
+        }
+
+        let width = maxWidth.isFinite ? min(usedWidth, maxWidth) : usedWidth
+        return Arrangement(
+            size: CGSize(width: width, height: y + rowHeight),
+            frames: frames
+        )
+    }
+}
+
 /// Stage circles, then the review circle, then an optional merge mark.
 /// A fully green line means the MR can merge. Merged rows show only the solid merge mark.
 private struct StatusLine: View {
@@ -312,10 +464,11 @@ private struct StatusLine: View {
     @Environment(\.statusSymbolsOutdated) private var statusSymbolsOutdated
 
     private static let dotSpacing: CGFloat = 5
+    private static let lineSpacing: CGFloat = 4
     private static let approvalGap: CGFloat = 10
 
     var body: some View {
-        HStack(spacing: Self.dotSpacing) {
+        WrappingHStackLayout(spacing: Self.dotSpacing, lineSpacing: Self.lineSpacing) {
             ForEach(stages) { stage in
                 stageControl(stage)
             }
@@ -337,8 +490,6 @@ private struct StatusLine: View {
                 )
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .layoutPriority(1)
         .accessibilityElement(children: interactive ? .contain : .ignore)
     }
 

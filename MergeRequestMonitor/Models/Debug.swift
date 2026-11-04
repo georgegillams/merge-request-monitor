@@ -270,6 +270,27 @@ enum DebugMergeRequestFixtures {
                 userHasApproved: false
             ),
             threads: .empty
+        ),
+        // Stress-test: enough stages to force the row pipeline strip to overflow.
+        item(
+            instanceID: acmeID,
+            instanceLabel: "Acme GitLab",
+            projectID: 4040,
+            iid: 40,
+            title: "ci: expand the monolith pipeline until every team owns a stage",
+            projectPath: "platform/monolith",
+            createdAt: date(hoursAgo: 2),
+            updatedAt: date(hoursAgo: 2),
+            webURL: "https://gitlab.acme.example/platform/monolith/-/merge_requests/40",
+            sourceBranch: "ci/forty-stages",
+            stages: fortyPipelineStages,
+            approvals: ApprovalSummary(
+                approvedBy: ["Alex Kim"],
+                approvalsRequired: 2,
+                approvalsLeft: 1,
+                userHasApproved: false
+            ),
+            threads: ThreadSummary(resolvable: 1, resolved: 0)
         )
     ]
 
@@ -404,6 +425,28 @@ enum DebugMergeRequestFixtures {
             message: "HTTP 401: Unauthorized"
         )
     ]
+
+    /// Forty named stages cycling through every status so the popover layout
+    /// can be checked against an absurdly long GitLab pipeline.
+    private static let fortyPipelineStages: [PipelineStage] = {
+        let names = [
+            "prepare", "deps", "lint", "typecheck", "unit", "integration",
+            "e2e", "contract", "security", "sast", "dast", "secret-scan",
+            "license", "build-api", "build-web", "build-ios", "build-android",
+            "package", "publish", "smoke", "canary", "staging", "perf",
+            "load", "chaos", "docs", "changelog", "notify-slack", "notify-pager",
+            "migrate", "seed", "backup", "rollout", "verify", "soak",
+            "promote", "cleanup", "archive", "report", "done"
+        ]
+        let statusCycle: [PipelineStageStatus] = [
+            .success, .success, .success, .success, .inProgress, .paused,
+            .created, .manual, .failed, .skipped, .cancelled, .unknown
+        ]
+        let pairs = names.enumerated().map { index, name in
+            (name, statusCycle[index % statusCycle.count])
+        }
+        return stages(pairs)
+    }()
 
     private static func stages(_ pairs: [(String, PipelineStageStatus)]) -> [PipelineStage] {
         pairs.enumerated().map { index, pair in
