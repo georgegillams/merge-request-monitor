@@ -50,28 +50,410 @@ actor GitLabAPIClient {
         token: String,
         sortOrder: MergeRequestSortOrder,
         includeRecentlyMerged: Bool,
-        kind: MergeRequestListKind
+        kind: MergeRequestListKind,
+        otherSources: OtherMergeRequestSources = .default
     ) async throws -> [MergeRequestItem] {
-        let scope = kind.gitLabScope
-        async let openMRs = listMergeRequests(
-            baseURL: instance.normalizedBaseURL,
-            token: token,
-            state: "opened",
-            sortOrder: sortOrder,
-            scope: scope
-        )
-        let open = try await openMRs
+        let open: [APIMergeRequest]
         let merged: [APIMergeRequest]
-        if includeRecentlyMerged {
-            merged = try await listRecentlyMergedMergeRequests(
+        switch kind {
+        case .authored:
+            open = try await listMergeRequests(
                 baseURL: instance.normalizedBaseURL,
                 token: token,
-                scope: scope,
-                window: kind.recentlyMergedWindow
+                state: "opened",
+                sortOrder: sortOrder,
+                scope: kind.gitLabScope
             )
-        } else {
-            merged = []
+            if includeRecentlyMerged {
+                merged = try await listRecentlyMergedMergeRequests(
+                    baseURL: instance.normalizedBaseURL,
+                    token: token,
+                    scopes: [kind.gitLabScope],
+                    window: kind.recentlyMergedWindow
+                )
+            } else {
+                merged = []
+            }
+        case .requestedReviews:
+            let listed = try await listOtherMergeRequests(
+                baseURL: instance.normalizedBaseURL,
+                token: token,
+                sortOrder: sortOrder,
+                includeRecentlyMerged: includeRecentlyMerged,
+                recentlyMergedWindow: kind.recentlyMergedWindow,
+                sources: otherSources
+            )
+            open = listed.open
+            merged = listed.merged
         }
+        return try await enrichListedMergeRequests(
+            open: open,
+            merged: merged,
+            instance: instance,
+            token: token
+        )
+    }
+
+    /// Review requests, MRs from watched repos, and individually subscribed MRs.
+    private func listOtherMergeRequests(
+        baseURL: String,
+        token: String,
+        sortOrder: MergeRequestSortOrder,
+        includeRecentlyMerged: Bool,
+        recentlyMergedWindow: TimeInterval,
+        sources: OtherMergeRequestSources
+    ) async throws -> (open: [APIMergeRequest], merged: [APIMergeRequest]) {
+        async let reviews: [APIMergeRequest] = {
+            guard sources.contains(.reviewRequests) else { return [] }
+            return try await listMergeRequests(
+                baseURL: baseURL,
+                token: token,
+                state: "opened",
+                sortOrder: sortOrder,
+                scope: "reviews_for_me"
+            )
+        }()
+        async let watched: (open: [APIMergeRequest], merged: [APIMergeRequest]) = {
+            guard sources.contains(.watchedRepos) else { return ([], []) }
+            return await listMergeRequestsFromWatchedRepos(
+                baseURL: baseURL,
+                token: token,
+                sortOrder: sortOrder,
+                includeRecentlyMerged: includeRecentlyMerged,
+                recentlyMergedWindow: recentlyMergedWindow
+            )
+        }()
+        async let subscribed: [APIMergeRequest] = {
+            guard sources.contains(.subscribed) else { return [] }
+            return await listExplicitlySubscribedMergeRequests(
+                baseURL: baseURL,
+                token: token
+            )
+        }()
+        let reviewList = try await reviews
+        let watchedLists = await watched
+        let subscribedList = await subscribed
+
+        var openByID: [Int: APIMergeRequest] = [:]
+        for mr in reviewList + watchedLists.open + subscribedList {
+            openByID[mr.id] = mr
+        }
+
+        var mergedByID: [Int: APIMergeRequest] = [:]
+        if includeRecentlyMerged {
+            let recentReviews: [APIMergeRequest]
+            if sources.contains(.reviewRequests) {
+                recentReviews = try await listRecentlyMergedMergeRequests(
+                    baseURL: baseURL,
+                    token: token,
+                    scopes: ["reviews_for_me"],
+                    window: recentlyMergedWindow
+                )
+            } else {
+                recentReviews = []
+            }
+            for mr in recentReviews + watchedLists.merged where openByID[mr.id] == nil {
+                mergedByID[mr.id] = mr
+            }
+        }
+
+        return (Array(openByID.values), Array(mergedByID.values))
+    }
+
+    /// Open (and optionally recently merged) MRs from groups/projects set to Watch.
+    private func listMergeRequestsFromWatchedRepos(
+        baseURL: String,
+        token: String,
+        sortOrder: MergeRequestSortOrder,
+        includeRecentlyMerged: Bool,
+        recentlyMergedWindow: TimeInterval
+    ) async -> (open: [APIMergeRequest], merged: [APIMergeRequest]) {
+        let groups: [APINamespace]
+        let projects: [APIMembershipProject]
+        do {
+            async let groupList = listMemberGroups(baseURL: baseURL, token: token)
+            async let projectList = listMemberProjects(baseURL: baseURL, token: token)
+            groups = try await groupList
+            projects = try await projectList
+        } catch {
+            gDebugPrint("watched repos membership list failed:", error.localizedDescription)
+            return ([], [])
+        }
+
+        var watchedGroupPaths: [String] = []
+        var watchedGroupIDs: [Int] = []
+        await withTaskGroup(of: (APINamespace, Bool).self) { group in
+            for namespace in groups {
+                group.addTask {
+                    let watched = await self.notificationLevelIsWatch(
+                        baseURL: baseURL,
+                        token: token,
+                        path: "/api/v4/groups/\(namespace.id)/notification_settings"
+                    )
+                    return (namespace, watched)
+                }
+            }
+            for await (namespace, watched) in group where watched {
+                watchedGroupIDs.append(namespace.id)
+                watchedGroupPaths.append(namespace.fullPath)
+            }
+        }
+
+        // Prefer root watched groups so subgroup MRs are covered once via include_subgroups.
+        let rootWatchedGroupIDs = watchedGroupIDs.filter { id in
+            guard let path = groups.first(where: { $0.id == id })?.fullPath else { return true }
+            return !watchedGroupPaths.contains { ancestor in
+                path != ancestor && path.hasPrefix(ancestor + "/")
+            }
+        }
+
+        var watchedProjectIDs: [Int] = []
+        await withTaskGroup(of: (Int, Bool).self) { group in
+            for project in projects {
+                if let namespacePath = project.namespaceFullPath,
+                   watchedGroupPaths.contains(where: { namespacePath == $0 || namespacePath.hasPrefix($0 + "/") }) {
+                    continue
+                }
+                group.addTask {
+                    let watched = await self.notificationLevelIsWatch(
+                        baseURL: baseURL,
+                        token: token,
+                        path: "/api/v4/projects/\(project.id)/notification_settings"
+                    )
+                    return (project.id, watched)
+                }
+            }
+            for await (projectID, watched) in group where watched {
+                watchedProjectIDs.append(projectID)
+            }
+        }
+
+        var openByID: [Int: APIMergeRequest] = [:]
+        var mergedByID: [Int: APIMergeRequest] = [:]
+        await withTaskGroup(of: (open: [APIMergeRequest], merged: [APIMergeRequest]).self) { group in
+            for groupID in rootWatchedGroupIDs {
+                group.addTask {
+                    await self.listNamespaceMergeRequests(
+                        baseURL: baseURL,
+                        token: token,
+                        pathPrefix: "/api/v4/groups/\(groupID)/merge_requests",
+                        sortOrder: sortOrder,
+                        includeRecentlyMerged: includeRecentlyMerged,
+                        recentlyMergedWindow: recentlyMergedWindow,
+                        extraQueryItems: [
+                            URLQueryItem(name: "include_subgroups", value: "true")
+                        ]
+                    )
+                }
+            }
+            for projectID in watchedProjectIDs.prefix(40) {
+                group.addTask {
+                    await self.listNamespaceMergeRequests(
+                        baseURL: baseURL,
+                        token: token,
+                        pathPrefix: "/api/v4/projects/\(projectID)/merge_requests",
+                        sortOrder: sortOrder,
+                        includeRecentlyMerged: includeRecentlyMerged,
+                        recentlyMergedWindow: recentlyMergedWindow,
+                        extraQueryItems: []
+                    )
+                }
+            }
+            for await listed in group {
+                for mr in listed.open {
+                    openByID[mr.id] = mr
+                }
+                for mr in listed.merged {
+                    mergedByID[mr.id] = mr
+                }
+            }
+        }
+        return (Array(openByID.values), Array(mergedByID.values))
+    }
+
+    private func listNamespaceMergeRequests(
+        baseURL: String,
+        token: String,
+        pathPrefix: String,
+        sortOrder: MergeRequestSortOrder,
+        includeRecentlyMerged: Bool,
+        recentlyMergedWindow: TimeInterval,
+        extraQueryItems: [URLQueryItem]
+    ) async -> (open: [APIMergeRequest], merged: [APIMergeRequest]) {
+        var open: [APIMergeRequest] = []
+        var merged: [APIMergeRequest] = []
+        do {
+            open = try await listScopedMergeRequests(
+                baseURL: baseURL,
+                token: token,
+                pathPrefix: pathPrefix,
+                state: "opened",
+                sortOrder: sortOrder,
+                extraQueryItems: extraQueryItems
+            )
+        } catch {
+            gDebugPrint("watched open MRs failed for \(pathPrefix):", error.localizedDescription)
+        }
+        if includeRecentlyMerged {
+            do {
+                let cutoff = Date().addingTimeInterval(-recentlyMergedWindow)
+                let recent = try await listScopedMergeRequests(
+                    baseURL: baseURL,
+                    token: token,
+                    pathPrefix: pathPrefix,
+                    state: "merged",
+                    sortOrder: sortOrder,
+                    extraQueryItems: extraQueryItems + [
+                        URLQueryItem(name: "order_by", value: "merged_at"),
+                        URLQueryItem(name: "sort", value: "desc"),
+                        URLQueryItem(name: "merged_after", value: Self.formatGitLabDate(cutoff))
+                    ],
+                    overrideOrder: true
+                )
+                merged = recent.filter { Self.parseGitLabDate($0.merged_at) >= cutoff }
+            } catch {
+                gDebugPrint("watched merged MRs failed for \(pathPrefix):", error.localizedDescription)
+            }
+        }
+        return (open, merged)
+    }
+
+    private func listScopedMergeRequests(
+        baseURL: String,
+        token: String,
+        pathPrefix: String,
+        state: String,
+        sortOrder: MergeRequestSortOrder,
+        extraQueryItems: [URLQueryItem],
+        overrideOrder: Bool = false
+    ) async throws -> [APIMergeRequest] {
+        guard var components = URLComponents(string: "\(baseURL)\(pathPrefix)") else {
+            throw GitLabAPIError.invalidURL
+        }
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "per_page", value: "50")
+        ]
+        if !overrideOrder {
+            items.append(URLQueryItem(name: "order_by", value: sortOrder.gitLabOrderBy))
+            items.append(URLQueryItem(name: "sort", value: sortOrder.gitLabSort))
+        }
+        items.append(contentsOf: extraQueryItems)
+        components.queryItems = items
+        guard let url = components.url else { throw GitLabAPIError.invalidURL }
+        return try await get(url, baseURL: baseURL, token: token)
+    }
+
+    private func notificationLevelIsWatch(
+        baseURL: String,
+        token: String,
+        path: String
+    ) async -> Bool {
+        do {
+            let url = try apiURL(baseURL, path: path)
+            let settings: APINotificationSettings = try await get(url, baseURL: baseURL, token: token)
+            return settings.level.lowercased() == "watch"
+        } catch {
+            gDebugPrint("notification settings failed for \(path):", error.localizedDescription)
+            return false
+        }
+    }
+
+    private func listMemberGroups(baseURL: String, token: String) async throws -> [APINamespace] {
+        try await listPaginated(
+            baseURL: baseURL,
+            token: token,
+            path: "/api/v4/groups",
+            queryItems: [
+                URLQueryItem(name: "min_access_level", value: "10"),
+                URLQueryItem(name: "all_available", value: "false"),
+                URLQueryItem(name: "per_page", value: "100")
+            ],
+            maxPages: 5
+        )
+    }
+
+    private func listMemberProjects(baseURL: String, token: String) async throws -> [APIMembershipProject] {
+        try await listPaginated(
+            baseURL: baseURL,
+            token: token,
+            path: "/api/v4/projects",
+            queryItems: [
+                URLQueryItem(name: "membership", value: "true"),
+                URLQueryItem(name: "simple", value: "true"),
+                URLQueryItem(name: "order_by", value: "last_activity_at"),
+                URLQueryItem(name: "sort", value: "desc"),
+                URLQueryItem(name: "per_page", value: "100")
+            ],
+            maxPages: 3
+        )
+    }
+
+    private func listPaginated<T: Decodable>(
+        baseURL: String,
+        token: String,
+        path: String,
+        queryItems: [URLQueryItem],
+        maxPages: Int
+    ) async throws -> [T] {
+        var page = 1
+        var results: [T] = []
+        for _ in 0..<maxPages {
+            guard var components = URLComponents(string: "\(baseURL)\(path)") else {
+                throw GitLabAPIError.invalidURL
+            }
+            components.queryItems = queryItems + [URLQueryItem(name: "page", value: String(page))]
+            guard let url = components.url else { throw GitLabAPIError.invalidURL }
+            let pageResult: (value: [T], nextPage: Int?) = try await fetch(url, baseURL: baseURL, token: token)
+            results.append(contentsOf: pageResult.value)
+            guard let nextPage = pageResult.nextPage, nextPage > page else { break }
+            page = nextPage
+        }
+        return results
+    }
+
+    /// MRs where the user turned the notification bell on (explicit subscription).
+    private func listExplicitlySubscribedMergeRequests(
+        baseURL: String,
+        token: String
+    ) async -> [APIMergeRequest] {
+        guard let url = URL(string: baseURL + "/api/graphql") else { return [] }
+        let body: Data
+        do {
+            body = try JSONSerialization.data(withJSONObject: [
+                "query": Self.subscribedMergeRequestsQuery
+            ])
+        } catch {
+            return []
+        }
+        do {
+            let response: SubscribedMergeRequestsResponse = try await fetch(
+                url,
+                baseURL: baseURL,
+                token: token,
+                method: "POST",
+                body: body
+            ).value
+            if let errors = response.errors, !errors.isEmpty {
+                gDebugPrint(
+                    "subscribed MRs GraphQL errors:",
+                    errors.compactMap(\.message).joined(separator: "; ")
+                )
+                return []
+            }
+            return (response.data?.mergeRequests?.nodes ?? []).compactMap { $0.asAPIMergeRequest() }
+        } catch {
+            gDebugPrint("subscribed MRs GraphQL failed:", error.localizedDescription)
+            return []
+        }
+    }
+
+    private func enrichListedMergeRequests(
+        open: [APIMergeRequest],
+        merged: [APIMergeRequest],
+        instance: GitLabInstanceConfig,
+        token: String
+    ) async throws -> [MergeRequestItem] {
         let defaultBranches = await fetchDefaultBranches(
             baseURL: instance.normalizedBaseURL,
             projectIDs: Set((open + merged).map(\.targetProjectID)),
@@ -128,9 +510,12 @@ actor GitLabAPIClient {
         let target_project_id: Int?
         let source_branch: String?
         let target_branch: String?
+        let state: String?
         let references: References?
         let head_pipeline: PipelineRef?
         let pipeline: PipelineRef?
+        /// Set when building from a todo whose target lacks `references.full`.
+        let pathOverride: String?
 
         struct References: Decodable {
             let full: String?
@@ -142,11 +527,97 @@ actor GitLabAPIClient {
             let status: String?
         }
 
+        enum CodingKeys: String, CodingKey {
+            case id, iid, title, web_url, created_at, updated_at, merged_at
+            case project_id, target_project_id, source_branch, target_branch, state
+            case references, head_pipeline, pipeline
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(Int.self, forKey: .id)
+            iid = try container.decode(Int.self, forKey: .iid)
+            title = try container.decode(String.self, forKey: .title)
+            web_url = try container.decodeIfPresent(String.self, forKey: .web_url)
+            created_at = try container.decodeIfPresent(String.self, forKey: .created_at)
+            updated_at = try container.decodeIfPresent(String.self, forKey: .updated_at)
+            merged_at = try container.decodeIfPresent(String.self, forKey: .merged_at)
+            project_id = try container.decode(Int.self, forKey: .project_id)
+            target_project_id = try container.decodeIfPresent(Int.self, forKey: .target_project_id)
+            source_branch = try container.decodeIfPresent(String.self, forKey: .source_branch)
+            target_branch = try container.decodeIfPresent(String.self, forKey: .target_branch)
+            state = try container.decodeIfPresent(String.self, forKey: .state)
+            references = try container.decodeIfPresent(References.self, forKey: .references)
+            head_pipeline = try container.decodeIfPresent(PipelineRef.self, forKey: .head_pipeline)
+            pipeline = try container.decodeIfPresent(PipelineRef.self, forKey: .pipeline)
+            pathOverride = nil
+        }
+
+        init(
+            id: Int,
+            iid: Int,
+            title: String,
+            web_url: String?,
+            created_at: String?,
+            updated_at: String?,
+            merged_at: String?,
+            project_id: Int,
+            target_project_id: Int?,
+            source_branch: String?,
+            target_branch: String?,
+            state: String?,
+            references: References?,
+            head_pipeline: PipelineRef?,
+            pipeline: PipelineRef?,
+            pathOverride: String?
+        ) {
+            self.id = id
+            self.iid = iid
+            self.title = title
+            self.web_url = web_url
+            self.created_at = created_at
+            self.updated_at = updated_at
+            self.merged_at = merged_at
+            self.project_id = project_id
+            self.target_project_id = target_project_id
+            self.source_branch = source_branch
+            self.target_branch = target_branch
+            self.state = state
+            self.references = references
+            self.head_pipeline = head_pipeline
+            self.pipeline = pipeline
+            self.pathOverride = pathOverride
+        }
+
+        func with(webURL: String?, pathOverride: String?) -> APIMergeRequest {
+            APIMergeRequest(
+                id: id,
+                iid: iid,
+                title: title,
+                web_url: webURL ?? web_url,
+                created_at: created_at,
+                updated_at: updated_at,
+                merged_at: merged_at,
+                project_id: project_id,
+                target_project_id: target_project_id,
+                source_branch: source_branch,
+                target_branch: target_branch,
+                state: state,
+                references: references,
+                head_pipeline: head_pipeline,
+                pipeline: pipeline,
+                pathOverride: pathOverride ?? self.pathOverride
+            )
+        }
+
         var pipelineID: Int? {
             head_pipeline?.id ?? pipeline?.id
         }
 
         var projectPath: String {
+            if let pathOverride, !pathOverride.isEmpty {
+                return pathOverride
+            }
             if let full = references?.full, let bang = full.firstIndex(of: "!") {
                 return String(full[..<bang])
             }
@@ -156,6 +627,37 @@ actor GitLabAPIClient {
         /// Project the MR merges into. Forks keep `project_id` as the source.
         var targetProjectID: Int {
             target_project_id ?? project_id
+        }
+
+        var isOpen: Bool {
+            (state ?? "opened").lowercased() == "opened"
+        }
+    }
+
+    private struct APINotificationSettings: Decodable {
+        let level: String
+    }
+
+    private struct APINamespace: Decodable {
+        let id: Int
+        let full_path: String?
+
+        var fullPath: String {
+            full_path ?? ""
+        }
+    }
+
+    private struct APIMembershipProject: Decodable {
+        let id: Int
+        let namespace: Namespace?
+
+        struct Namespace: Decodable {
+            let full_path: String?
+            let kind: String?
+        }
+
+        var namespaceFullPath: String? {
+            namespace?.full_path
         }
     }
 
@@ -213,25 +715,31 @@ actor GitLabAPIClient {
     private func listRecentlyMergedMergeRequests(
         baseURL: String,
         token: String,
-        scope: String,
+        scopes: [String],
         window: TimeInterval
     ) async throws -> [APIMergeRequest] {
         let cutoff = Date().addingTimeInterval(-window)
-        guard var components = URLComponents(string: "\(baseURL)/api/v4/merge_requests") else {
-            throw GitLabAPIError.invalidURL
+        var byID: [Int: APIMergeRequest] = [:]
+        for scope in scopes {
+            guard var components = URLComponents(string: "\(baseURL)/api/v4/merge_requests") else {
+                throw GitLabAPIError.invalidURL
+            }
+            components.queryItems = [
+                URLQueryItem(name: "scope", value: scope),
+                URLQueryItem(name: "state", value: "merged"),
+                URLQueryItem(name: "per_page", value: "50"),
+                URLQueryItem(name: "order_by", value: "merged_at"),
+                URLQueryItem(name: "sort", value: "desc"),
+                URLQueryItem(name: "merged_after", value: Self.formatGitLabDate(cutoff))
+            ]
+            guard let url = components.url else { throw GitLabAPIError.invalidURL }
+            let mrs: [APIMergeRequest] = try await get(url, baseURL: baseURL, token: token)
+            // Keep a client-side floor in case an older GitLab ignores `merged_after`.
+            for mr in mrs where Self.parseGitLabDate(mr.merged_at) >= cutoff {
+                byID[mr.id] = mr
+            }
         }
-        components.queryItems = [
-            URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "state", value: "merged"),
-            URLQueryItem(name: "per_page", value: "50"),
-            URLQueryItem(name: "order_by", value: "merged_at"),
-            URLQueryItem(name: "sort", value: "desc"),
-            URLQueryItem(name: "merged_after", value: Self.formatGitLabDate(cutoff))
-        ]
-        guard let url = components.url else { throw GitLabAPIError.invalidURL }
-        let mrs: [APIMergeRequest] = try await get(url, baseURL: baseURL, token: token)
-        // Keep a client-side floor in case an older GitLab ignores `merged_after`.
-        return mrs.filter { Self.parseGitLabDate($0.merged_at) >= cutoff }
+        return Array(byID.values)
     }
 
     private func enrichOpen(
@@ -666,6 +1174,27 @@ actor GitLabAPIClient {
     }
     """
 
+    private static let subscribedMergeRequestsQuery = """
+    query {
+      mergeRequests(state: opened, subscribed: EXPLICITLY_SUBSCRIBED, first: 50) {
+        nodes {
+          id
+          iid
+          title
+          webUrl
+          createdAt
+          updatedAt
+          sourceBranch
+          targetBranch
+          project {
+            id
+            fullPath
+          }
+        }
+      }
+    }
+    """
+
     private struct ThreadCountsResponse: Decodable {
         struct Envelope: Decodable {
             struct MergeRequest: Decodable {
@@ -674,6 +1203,72 @@ actor GitLabAPIClient {
             }
 
             let mergeRequest: MergeRequest?
+        }
+
+        let data: Envelope?
+        let errors: [GraphQLError]?
+    }
+
+    private struct SubscribedMergeRequestsResponse: Decodable {
+        struct Envelope: Decodable {
+            let mergeRequests: Connection?
+        }
+
+        struct Connection: Decodable {
+            let nodes: [Node]?
+        }
+
+        struct Node: Decodable {
+            let id: String?
+            let iid: String?
+            let title: String?
+            let webUrl: String?
+            let createdAt: String?
+            let updatedAt: String?
+            let sourceBranch: String?
+            let targetBranch: String?
+            let project: Project?
+
+            struct Project: Decodable {
+                let id: String?
+                let fullPath: String?
+            }
+
+            func asAPIMergeRequest() -> APIMergeRequest? {
+                guard let numericID = Self.numericID(from: id),
+                      let iidValue = Int(iid ?? ""),
+                      let title,
+                      let projectID = Self.numericID(from: project?.id) else {
+                    return nil
+                }
+                let path = project?.fullPath
+                let references = path.map {
+                    APIMergeRequest.References(full: "\($0)!\(iidValue)")
+                }
+                return APIMergeRequest(
+                    id: numericID,
+                    iid: iidValue,
+                    title: title,
+                    web_url: webUrl,
+                    created_at: createdAt,
+                    updated_at: updatedAt,
+                    merged_at: nil,
+                    project_id: projectID,
+                    target_project_id: projectID,
+                    source_branch: sourceBranch,
+                    target_branch: targetBranch,
+                    state: "opened",
+                    references: references,
+                    head_pipeline: nil,
+                    pipeline: nil,
+                    pathOverride: path
+                )
+            }
+
+            private static func numericID(from gid: String?) -> Int? {
+                guard let gid, let last = gid.split(separator: "/").last else { return nil }
+                return Int(last)
+            }
         }
 
         let data: Envelope?

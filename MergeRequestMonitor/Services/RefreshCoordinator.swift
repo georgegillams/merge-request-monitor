@@ -40,7 +40,7 @@ final class RefreshCoordinator: ObservableObject {
     @Published private(set) var errors: [InstanceError] = []
     /// True when every instance failed to load authored merge requests.
     @Published private(set) var authoredLoadFailed = false
-    /// True when every instance failed to load requested reviews.
+    /// True when every instance failed to load other merge requests.
     @Published private(set) var reviewedLoadFailed = false
     /// Instances whose most recent fetch succeeded. Empty until that result arrives,
     /// so a first attempt is not shown as connected while it is still in flight.
@@ -170,14 +170,15 @@ final class RefreshCoordinator: ObservableObject {
     }
 
     private func performRefresh() async {
-        let (targets, sortOrder, authoredFilters, requestedReviewFilters) = await MainActor.run {
+        let (targets, sortOrder, authoredFilters, requestedReviewFilters, otherSources) = await MainActor.run {
             (
                 settings.instances.map { instance in
                     (instance, settings.lookupToken(for: instance.id))
                 },
                 settings.sortOrder,
                 settings.authoredFilters,
-                settings.requestedReviewFilters
+                settings.requestedReviewFilters,
+                settings.otherSources
             )
         }
 
@@ -190,7 +191,7 @@ final class RefreshCoordinator: ObservableObject {
                 requestedReviewFilters.showRecentlyMerged || !$0.isMerged
             }
             gDebugPrint(
-                "RefreshCoordinator using \(fixtures.count) authored and \(reviewedFixtures.count) review mock merge requests"
+                "RefreshCoordinator using \(fixtures.count) authored and \(reviewedFixtures.count) other mock merge requests"
             )
             await applyResults(
                 collected: fixtures,
@@ -245,7 +246,8 @@ final class RefreshCoordinator: ObservableObject {
                         client: client,
                         sortOrder: sortOrder,
                         authoredShowRecentlyMerged: authoredFilters.showRecentlyMerged,
-                        requestedShowRecentlyMerged: requestedReviewFilters.showRecentlyMerged
+                        requestedShowRecentlyMerged: requestedReviewFilters.showRecentlyMerged,
+                        otherSources: otherSources
                     )
                 }
             }
@@ -300,7 +302,8 @@ final class RefreshCoordinator: ObservableObject {
         client: GitLabAPIClient,
         sortOrder: MergeRequestSortOrder,
         authoredShowRecentlyMerged: Bool,
-        requestedShowRecentlyMerged: Bool
+        requestedShowRecentlyMerged: Bool,
+        otherSources: OtherMergeRequestSources
     ) async -> InstanceFetch {
         let token: String
         switch lookup {
@@ -329,7 +332,8 @@ final class RefreshCoordinator: ObservableObject {
             token: token,
             sortOrder: sortOrder,
             showRecentlyMerged: authoredShowRecentlyMerged,
-            kind: .authored
+            kind: .authored,
+            otherSources: otherSources
         )
         async let reviewedAttempt = fetchList(
             client: client,
@@ -337,17 +341,19 @@ final class RefreshCoordinator: ObservableObject {
             token: token,
             sortOrder: sortOrder,
             showRecentlyMerged: requestedShowRecentlyMerged,
-            kind: .requestedReviews
+            kind: .requestedReviews,
+            otherSources: otherSources
         )
         let authored = await authoredAttempt
         let reviewed = await reviewedAttempt
 
         switch (authored, reviewed) {
         case (.success(let authoredMRs), .success(let reviewedMRs)):
+            let authoredIDs = Set(authoredMRs.map(\.id))
             return InstanceFetch(
                 instanceID: instance.id,
                 authored: authoredMRs,
-                reviewed: reviewedMRs,
+                reviewed: reviewedMRs.filter { !authoredIDs.contains($0.id) },
                 error: nil,
                 connected: true,
                 authoredSucceeded: true,
@@ -404,7 +410,8 @@ final class RefreshCoordinator: ObservableObject {
         token: String,
         sortOrder: MergeRequestSortOrder,
         showRecentlyMerged: Bool,
-        kind: MergeRequestListKind
+        kind: MergeRequestListKind,
+        otherSources: OtherMergeRequestSources
     ) async -> Result<[MergeRequestItem], Error> {
         do {
             let items = try await client.fetchMergeRequests(
@@ -412,7 +419,8 @@ final class RefreshCoordinator: ObservableObject {
                 token: token,
                 sortOrder: sortOrder,
                 includeRecentlyMerged: showRecentlyMerged,
-                kind: kind
+                kind: kind,
+                otherSources: otherSources
             )
             return .success(items)
         } catch {
@@ -433,6 +441,7 @@ final class RefreshCoordinator: ObservableObject {
         let sortOrder: MergeRequestSortOrder
         let authoredShowRecentlyMerged: Bool
         let requestedShowRecentlyMerged: Bool
+        let otherSources: OtherMergeRequestSources
     }
 
     private func makeFetchTrigger() -> FetchTrigger {
@@ -447,7 +456,8 @@ final class RefreshCoordinator: ObservableObject {
             },
             sortOrder: settings.sortOrder,
             authoredShowRecentlyMerged: settings.authoredFilters.showRecentlyMerged,
-            requestedShowRecentlyMerged: settings.requestedReviewFilters.showRecentlyMerged
+            requestedShowRecentlyMerged: settings.requestedReviewFilters.showRecentlyMerged,
+            otherSources: settings.otherSources
         )
     }
 

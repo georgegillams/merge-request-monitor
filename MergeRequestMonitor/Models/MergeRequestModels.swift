@@ -183,16 +183,17 @@ struct MergeRequestSections: Equatable {
 /// Which merge request list is shown in the popover.
 enum MergeRequestListKind: String, Codable, CaseIterable {
     case authored
+    /// Review requests, watched repos, and individually subscribed merge requests.
     case requestedReviews
 
     var tabTitle: String {
         switch self {
         case .authored: return "My merge requests"
-        case .requestedReviews: return "Requested reviews"
+        case .requestedReviews: return "Other merge requests"
         }
     }
 
-    /// GitLab `scope` query value for this list.
+    /// GitLab `scope` query value for authored lists. Other uses multiple sources.
     var gitLabScope: String {
         switch self {
         case .authored: return "created_by_me"
@@ -220,10 +221,51 @@ enum MergeRequestListKind: String, Codable, CaseIterable {
                 : "No open merge requests authored by you on the configured GitLab instances."
         case .requestedReviews:
             return showRecentlyMerged
-                ? "No open or recently merged merge requests waiting for your review on the configured GitLab instances."
-                : "No open merge requests waiting for your review on the configured GitLab instances."
+                ? "No open or recently merged review requests, watched-repo, or subscribed merge requests on the configured GitLab instances."
+                : "No open review requests, watched-repo, or subscribed merge requests on the configured GitLab instances."
         }
     }
+
+    func tabLabel(count: Int) -> String {
+        "\(tabTitle) (\(count))"
+    }
+}
+
+/// Which statuses contribute to the number shown on each popover tab.
+struct TabCountStatuses: OptionSet, Codable, Equatable {
+    let rawValue: Int
+
+    static let ready = TabCountStatuses(rawValue: 1 << 0)
+    static let mergeTrain = TabCountStatuses(rawValue: 1 << 1)
+    static let draft = TabCountStatuses(rawValue: 1 << 2)
+    static let merged = TabCountStatuses(rawValue: 1 << 3)
+
+    /// Ready and merge-queue MRs only.
+    static let `default`: TabCountStatuses = [.ready, .mergeTrain]
+
+    func includes(_ item: MergeRequestItem) -> Bool {
+        if item.isMerged { return contains(.merged) }
+        if item.isInMergeQueue { return contains(.mergeTrain) }
+        if item.isDraft { return contains(.draft) }
+        return contains(.ready)
+    }
+
+    func count(in items: [MergeRequestItem]) -> Int {
+        items.reduce(0) { partial, item in
+            partial + (includes(item) ? 1 : 0)
+        }
+    }
+}
+
+/// Which GitLab sources feed the Other merge requests tab.
+struct OtherMergeRequestSources: OptionSet, Codable, Equatable {
+    let rawValue: Int
+
+    static let reviewRequests = OtherMergeRequestSources(rawValue: 1 << 0)
+    static let watchedRepos = OtherMergeRequestSources(rawValue: 1 << 1)
+    static let subscribed = OtherMergeRequestSources(rawValue: 1 << 2)
+
+    static let `default`: OtherMergeRequestSources = [.reviewRequests, .watchedRepos, .subscribed]
 }
 
 /// Per-tab filters for recently merged and draft merge requests.
@@ -252,7 +294,7 @@ enum PopoverTabPreference: String, Codable, CaseIterable {
     var label: String {
         switch self {
         case .authored: return "My merge requests"
-        case .requestedReviews: return "Requested reviews"
+        case .requestedReviews: return "Other merge requests"
         case .lastSelected: return "Last selected"
         }
     }

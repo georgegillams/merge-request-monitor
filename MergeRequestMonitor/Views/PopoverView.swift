@@ -104,7 +104,7 @@ struct PopoverView: View {
     private var tabs: some View {
         Picker(selection: $selectedTab) {
             ForEach(MergeRequestListKind.allCases, id: \.self) { kind in
-                Text(kind.tabTitle).tag(kind)
+                Text(kind.tabLabel(count: tabCount(for: kind))).tag(kind)
             }
         } label: {
             Text("Merge request list")
@@ -113,6 +113,21 @@ struct PopoverView: View {
         .labelsHidden()
         .padding(.horizontal, Primitive.Layout.spacingBase)
         .padding(.bottom, 10)
+    }
+
+    private func tabCount(for kind: MergeRequestListKind) -> Int {
+        settings.tabCountStatuses.count(in: displayedMergeRequests(for: kind))
+    }
+
+    private func displayedMergeRequests(for kind: MergeRequestListKind) -> [MergeRequestItem] {
+        let items: [MergeRequestItem]
+        switch kind {
+        case .authored:
+            items = coordinator.mergeRequests
+        case .requestedReviews:
+            items = coordinator.reviewedMergeRequests
+        }
+        return settings.filters(for: kind).applying(to: items)
     }
 
     @ViewBuilder
@@ -193,6 +208,7 @@ struct PopoverView: View {
                 .padding(.horizontal, Primitive.Layout.spacingBase)
                 .padding(.vertical, Primitive.Layout.spacingBase)
             }
+            .id(selectedTab)
             .frame(maxHeight: 520)
         }
     }
@@ -214,14 +230,7 @@ struct PopoverView: View {
     }
 
     private var displayedMergeRequests: [MergeRequestItem] {
-        let items: [MergeRequestItem]
-        switch selectedTab {
-        case .authored:
-            items = coordinator.mergeRequests
-        case .requestedReviews:
-            items = coordinator.reviewedMergeRequests
-        }
-        return selectedTabFilters.applying(to: items)
+        displayedMergeRequests(for: selectedTab)
     }
 
     private var selectedTabLoadFailed: Bool {

@@ -147,7 +147,7 @@ struct SettingsView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Default popover tab")
-                        Text("Open on your merge requests, requested reviews, or whichever you last viewed.")
+                        Text("Open on your merge requests, other merge requests, or whichever you last viewed.")
                             .font(.caption)
                             .foregroundStyle(Semantic.Colors.textDisabled)
                     }
@@ -194,7 +194,52 @@ struct SettingsView: View {
             listFiltersSection(
                 kind: .requestedReviews,
                 filters: $settings.requestedReviewFilters
-            )
+            ) {
+                Toggle(isOn: otherSourceBinding(.reviewRequests)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Review requests")
+                        Text("Merge requests where you are asked to review.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+                Toggle(isOn: otherSourceBinding(.watchedRepos)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Watched projects and groups")
+                        Text("Open merge requests from repos set to Watch in GitLab.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+                Toggle(isOn: otherSourceBinding(.subscribed)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Subscribed merge requests")
+                        Text("Merge requests where you turned notifications on.")
+                            .font(.caption)
+                            .foregroundStyle(Semantic.Colors.textDisabled)
+                    }
+                }
+            }
+
+            Section {
+                Toggle(isOn: tabCountBinding(.ready)) {
+                    Text("Ready")
+                }
+                Toggle(isOn: tabCountBinding(.mergeTrain)) {
+                    Text("Merge queue")
+                }
+                Toggle(isOn: tabCountBinding(.draft)) {
+                    Text("Draft")
+                }
+                Toggle(isOn: tabCountBinding(.merged)) {
+                    Text("Recently merged")
+                }
+            } header: {
+                Text("Tab counts")
+            } footer: {
+                Text("Statuses included in the number shown on each popover tab. Ready and merge queue are on by default.")
+                    .foregroundStyle(Semantic.Colors.textDisabled)
+            }
 
             Section("About") {
                 LabeledContent("Version", value: Bundle.main.menuBuildLabel)
@@ -233,10 +278,51 @@ struct SettingsView: View {
         return attributed
     }
 
+    private func tabCountBinding(_ status: TabCountStatuses) -> Binding<Bool> {
+        Binding(
+            get: { settings.tabCountStatuses.contains(status) },
+            set: { enabled in
+                var updated = settings.tabCountStatuses
+                if enabled {
+                    updated.insert(status)
+                } else {
+                    updated.remove(status)
+                }
+                settings.tabCountStatuses = updated
+            }
+        )
+    }
+
+    private func otherSourceBinding(_ source: OtherMergeRequestSources) -> Binding<Bool> {
+        Binding(
+            get: { settings.otherSources.contains(source) },
+            set: { enabled in
+                var updated = settings.otherSources
+                if enabled {
+                    updated.insert(source)
+                } else {
+                    updated.remove(source)
+                }
+                settings.otherSources = updated
+            }
+        )
+    }
+
     @ViewBuilder
     private func listFiltersSection(
         kind: MergeRequestListKind,
         filters: Binding<MergeRequestListFilters>
+    ) -> some View {
+        listFiltersSection(kind: kind, filters: filters) {
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func listFiltersSection<Extras: View>(
+        kind: MergeRequestListKind,
+        filters: Binding<MergeRequestListFilters>,
+        @ViewBuilder extras: () -> Extras
     ) -> some View {
         Section(kind.tabTitle) {
             Toggle(isOn: filters.showRecentlyMerged) {
@@ -256,6 +342,8 @@ struct SettingsView: View {
                         .foregroundStyle(Semantic.Colors.textDisabled)
                 }
             }
+
+            extras()
         }
     }
 
