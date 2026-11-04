@@ -50,7 +50,7 @@ struct PopoverView: View {
             panelShape.strokeBorder(Semantic.Colors.subtleOutlineColor, lineWidth: 1)
         )
         .padding(1)
-        .environment(\.statusSymbolsOutdated, coordinator.isStale)
+        .environment(\.statusSymbolsOutdated, coordinator.isStale(for: selectedTab))
         .onAppear {
             coordinator.refresh(reason: .popover)
         }
@@ -140,7 +140,7 @@ struct PopoverView: View {
                 actionTitle: "Open Settings",
                 action: onOpenSettings
             )
-        } else if displayedMergeRequests.isEmpty && coordinator.isRefreshing {
+        } else if displayedMergeRequests.isEmpty && coordinator.isRefreshing(for: selectedTab) {
             VStack(spacing: Primitive.Layout.spacingSm) {
                 ProgressView()
                     .controlSize(.small)
@@ -151,7 +151,7 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity, minHeight: 160)
             .padding()
         } else if displayedMergeRequests.isEmpty {
-            if selectedTabLoadFailed, let error = coordinator.lastError {
+            if selectedTabLoadFailed, let error = selectedTabErrors.first?.message {
                 EmptyStateView(
                     systemImage: "exclamationmark.triangle",
                     title: "Couldn’t load merge requests",
@@ -195,9 +195,9 @@ struct PopoverView: View {
                         }
                     }
 
-                    if !coordinator.errors.isEmpty {
+                    if !selectedTabErrors.isEmpty {
                         VStack(alignment: .leading, spacing: Primitive.Layout.spacingSm) {
-                            ForEach(coordinator.errors) { error in
+                            ForEach(selectedTabErrors) { error in
                                 Text("\(error.instanceLabel): \(error.message)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Semantic.Colors.statusDestructive)
@@ -211,6 +211,10 @@ struct PopoverView: View {
             .id(selectedTab)
             .frame(maxHeight: 520)
         }
+    }
+
+    private var selectedTabErrors: [InstanceError] {
+        coordinator.errors(for: selectedTab)
     }
 
     /// Refresh and the timestamp stay available once there is something to refresh,
@@ -289,11 +293,15 @@ struct PopoverView: View {
     }
 
     private func lastUpdatedLabel(at now: Date) -> String {
-        guard let lastUpdated = coordinator.lastUpdated else {
+        if coordinator.isRefreshing(for: selectedTab),
+           coordinator.lastUpdated(for: selectedTab) == nil {
+            return "Updating…"
+        }
+        guard let lastUpdated = coordinator.lastUpdated(for: selectedTab) else {
             return "Never updated"
         }
         let seconds = max(0, Int(now.timeIntervalSince(lastUpdated)))
-        if (seconds < 8) {
+        if seconds < 8 {
             return "Updated now"
         }
         return "Updated \(seconds) seconds ago"
