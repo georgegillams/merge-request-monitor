@@ -128,7 +128,13 @@ extension AppDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // Liquid Glass carries its own specular depth; keep a soft AppKit shadow
+        // only on systems that fall back to vibrancy materials.
+        if #available(macOS 26.0, *) {
+            panel.hasShadow = false
+        } else {
+            panel.hasShadow = true
+        }
         // Keep it visible while this app is inactive (normal for a menu-bar panel).
         // Dismissal on real focus changes is handled explicitly below.
         panel.hidesOnDeactivate = false

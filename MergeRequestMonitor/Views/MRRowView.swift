@@ -92,10 +92,11 @@ struct MRRowView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background {
-            RoundedRectangle(cornerRadius: Primitive.Layout.borderRadiusSm, style: .continuous)
-                .fill(Semantic.Colors.notBlack.opacity(isPressed ? 0.1 : 0))
-        }
+        .liquidGlassHighlight(
+            isPressed: isPressed,
+            isHovered: isHovered,
+            cornerRadius: Primitive.Layout.borderRadiusSm
+        )
         .onPointerHover($isHovered)
         .onChange(of: isHovered) { hovered in
             if !hovered {
@@ -158,10 +159,7 @@ struct MRRowView: View {
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background {
-                Capsule()
-                    .fill(Semantic.Colors.backgroundColorElevated)
-            }
+            .liquidGlassChip()
             .opacity(isHovered ? 1 : 0)
             .allowsHitTesting(isHovered)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
@@ -260,10 +258,7 @@ private struct DraftBadge: View {
             .foregroundStyle(Semantic.Colors.notBlack)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background {
-                Capsule()
-                    .fill(Semantic.Colors.notBlack.opacity(0.14))
-            }
+            .liquidGlassChip()
             .accessibilityLabel("Draft")
     }
 }
@@ -281,10 +276,7 @@ private struct ThreadsBadge: View {
         .foregroundStyle(Semantic.Colors.notBlack)
         .padding(.horizontal, 5)
         .padding(.vertical, 1)
-        .background {
-            Capsule()
-                .fill(Semantic.Colors.notBlack.opacity(0.14))
-        }
+        .liquidGlassChip()
         .hoverTooltip(threads.displayText)
         .accessibilityLabel(threads.displayText)
     }
