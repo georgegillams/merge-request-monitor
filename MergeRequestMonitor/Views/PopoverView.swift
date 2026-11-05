@@ -33,6 +33,7 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            tokenExpiryBanner
             header
             if showsTabs {
                 tabs
@@ -50,6 +51,15 @@ struct PopoverView: View {
             if settings.lastPopoverTab != tab {
                 settings.lastPopoverTab = tab
             }
+        }
+    }
+
+    private var tokenExpiryBanner: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            TokenExpiryBanner(
+                banners: coordinator.expiringTokenBanners(at: context.date),
+                onOpenSettings: onOpenSettings
+            )
         }
     }
 
@@ -297,6 +307,44 @@ struct PopoverView: View {
             return "Updated now"
         }
         return "Updated \(seconds) seconds ago"
+    }
+}
+
+private struct TokenExpiryBanner: View {
+    let banners: [ExpiringTokenBanner]
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        if !banners.isEmpty {
+            Button(action: onOpenSettings) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(banners) { banner in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .accessibilityHidden(true)
+                            Text(banner.message)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Semantic.Colors.tagTechColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    Semantic.Colors.tagTechBackground,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Primitive.Layout.spacingBase)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            .help("Open Settings to replace this token")
+            .accessibilityLabel(banners.map(\.message).joined(separator: ". "))
+        }
     }
 }
 

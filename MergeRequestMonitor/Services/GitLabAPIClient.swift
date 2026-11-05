@@ -94,6 +94,18 @@ actor GitLabAPIClient {
         )
     }
 
+    /// Expiry of the personal access token used to authenticate.
+    /// Nil when GitLab reports that the token does not expire.
+    func fetchPersonalAccessTokenExpiry(baseURL: String, token: String) async throws -> Date? {
+        let url = try apiURL(baseURL, path: "/api/v4/personal_access_tokens/self")
+        let info: APIPersonalAccessToken = try await get(url, baseURL: baseURL, token: token)
+        guard let raw = info.expiresAt, !raw.isEmpty else { return nil }
+        guard let expiresAt = GitLabTokenExpiry.expiresAt(fromAPIDate: raw) else {
+            throw GitLabAPIError.decoding(TokenExpiryDateError())
+        }
+        return expiresAt
+    }
+
     /// Review requests, MRs from watched repos, and individually subscribed MRs.
     private func listOtherMergeRequests(
         baseURL: String,
@@ -497,6 +509,16 @@ actor GitLabAPIClient {
     }
 
     // MARK: - Private
+
+    private struct APIPersonalAccessToken: Decodable {
+        let expiresAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case expiresAt = "expires_at"
+        }
+    }
+
+    private struct TokenExpiryDateError: Error {}
 
     private struct APIMergeRequest: Decodable {
         let id: Int

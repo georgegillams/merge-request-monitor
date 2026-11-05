@@ -456,7 +456,7 @@ private struct InstanceEditor: View {
                     ? "Enter a GitLab URL to open its token page"
                     : "Open personal access tokens in your browser")
 
-                InstanceStatusBadge(status: connectionStatus)
+                instanceStatusOrExpiry
                 Spacer(minLength: Primitive.Layout.spacingSm)
                 if canRemove {
                     Button(role: .destructive) {
@@ -546,6 +546,17 @@ private struct InstanceEditor: View {
         return value
     }
 
+    /// Expiry replaces the connection badge. A known expiry means the token is configured.
+    private var instanceStatusOrExpiry: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            if let presentation = coordinator.tokenExpiryPresentation(for: instance.id, at: context.date) {
+                TokenExpiryBadge(presentation: presentation)
+            } else {
+                InstanceStatusBadge(status: connectionStatus)
+            }
+        }
+    }
+
     /// Empty URL or token is not configured.
     /// Connected only after a fetch for this instance has succeeded.
     /// A failed fetch is inactive. The first attempt stays not configured until that result arrives.
@@ -593,6 +604,29 @@ private enum InstanceConnectionStatus {
         case .connected:
             return Semantic.Colors.statusSuccess
         }
+    }
+}
+
+private struct TokenExpiryBadge: View {
+    let presentation: TokenExpiryPresentation
+
+    var body: some View {
+        Text(presentation.text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(
+                presentation.isWarning
+                    ? Semantic.Colors.tagTechColor
+                    : Semantic.Colors.textDisabled
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                presentation.isWarning
+                    ? Semantic.Colors.tagTechBackground
+                    : Semantic.Colors.textDisabled.opacity(0.14),
+                in: Capsule()
+            )
+            .accessibilityLabel(presentation.text)
     }
 }
 
