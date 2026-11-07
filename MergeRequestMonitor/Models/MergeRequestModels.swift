@@ -716,3 +716,74 @@ struct GitLabInstanceConfig: Identifiable, Equatable, Codable {
         return host == allowed
     }
 }
+
+/// Expiry of a GitLab personal access token.
+/// GitLab stops accepting the token at midnight UTC on `expires_at`.
+enum GitLabTokenExpiry {
+    static let warningWindow: TimeInterval = 7 * 24 * 60 * 60
+
+    /// `nil` when GitLab reports no expiry date.
+    static func expiresAt(fromAPIDate value: String?) -> Date? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter.date(from: trimmed)
+    }
+
+    static func isWithinWarningWindow(expiresAt: Date, now: Date) -> Bool {
+        expiresAt.timeIntervalSince(now) <= warningWindow
+    }
+
+    /// Settings copy. `expiresAt` nil means the token does not expire.
+    static func timeLeftLabel(expiresAt: Date?, now: Date) -> String {
+        guard let expiresAt else { return "Does not expire" }
+        let remaining = expiresAt.timeIntervalSince(now)
+        if remaining <= 0 {
+            let overdue = -remaining
+            if overdue < 60 { return "Expired" }
+            return "Expired \(durationPhrase(overdue)) ago"
+        }
+        return "Expires in \(durationPhrase(remaining))"
+    }
+
+    static func bannerMessage(instanceLabel: String, expiresAt: Date, now: Date) -> String {
+        let remaining = expiresAt.timeIntervalSince(now)
+        if remaining <= 0 {
+            let overdue = -remaining
+            if overdue < 60 { return "\(instanceLabel) token has expired" }
+            return "\(instanceLabel) token expired \(durationPhrase(overdue)) ago"
+        }
+        return "\(instanceLabel) token expires in \(durationPhrase(remaining))"
+    }
+
+    /// Whole days. A partial day in the first week includes hours, so a token just past 7 days is not labeled as exactly 7 days.
+    private static func durationPhrase(_ interval: TimeInterval) -> String {
+        let seconds = max(0, interval)
+        let hour: TimeInterval = 60 * 60
+        let day: TimeInterval = 24 * hour
+        if seconds >= day {
+            let days = Int(seconds / day)
+            let hours = Int(seconds.truncatingRemainder(dividingBy: day) / hour)
+            if days > 7 || hours == 0 {
+                return "\(days) \(unit("day", count: days))"
+            }
+            return "\(days) \(unit("day", count: days)) \(hours) \(unit("hour", count: hours))"
+        }
+        if seconds >= hour {
+            let hours = Int(seconds / hour)
+            return "\(hours) \(unit("hour", count: hours))"
+        }
+        let minutes = max(1, Int(seconds / 60))
+        return "\(minutes) \(unit("minute", count: minutes))"
+    }
+
+    private static func unit(_ name: String, count: Int) -> String {
+        count == 1 ? name : name + "s"
+    }
+}

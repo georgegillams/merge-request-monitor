@@ -7,6 +7,23 @@ import Foundation
 import Combine
 import AppKit
 
+struct StoredTokenExpiry: Equatable {
+    let tokenFingerprint: Int
+    /// Nil when the token does not expire.
+    let expiresAt: Date?
+}
+
+struct TokenExpiryPresentation: Equatable {
+    let text: String
+    let isWarning: Bool
+}
+
+struct ExpiringTokenBanner: Identifiable, Equatable {
+    let id: UUID
+    let message: String
+    let expiresAt: Date
+}
+
 struct InstanceError: Identifiable, Equatable, LocalizedError {
     enum Kind: Equatable {
         /// URL or token was missing, so no request was made.
@@ -53,6 +70,8 @@ final class RefreshCoordinator: ObservableObject {
     @Published private(set) var isReviewedRefreshing = false
     @Published private(set) var isAuthoredStale = false
     @Published private(set) var isReviewedStale = false
+    /// Last successful expiry lookup for each instance, keyed by instance id.
+    @Published private(set) var tokenExpiries: [UUID: StoredTokenExpiry] = [:]
 
     private let settings: AppSettings
     private let client = GitLabAPIClient()
@@ -166,8 +185,49 @@ final class RefreshCoordinator: ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.refreshAuthored() }
                 group.addTask { await self.refreshReviewed() }
+                group.addTask { await self.refreshTokenExpiries() }
             }
         }
+    }
+
+    /// Settings copy for one instance. Nil until a lookup has succeeded for the current token.
+    func tokenExpiryPresentation(for instanceID: UUID, at now: Date) -> TokenExpiryPresentation? {
+        guard let record = matchingTokenExpiry(for: instanceID) else { return nil }
+        let warning = record.expiresAt.map {
+            GitLabTokenExpiry.isWithinWarningWindow(expiresAt: $0, now: now)
+        } ?? false
+        return TokenExpiryPresentation(
+            text: GitLabTokenExpiry.timeLeftLabel(expiresAt: record.expiresAt, now: now),
+            isWarning: warning
+        )
+    }
+
+    /// Tokens that expire within the next 7 days, soonest first. Includes tokens that already expired.
+    func expiringTokenBanners(at now: Date) -> [ExpiringTokenBanner] {
+        settings.instances.compactMap { instance -> ExpiringTokenBanner? in
+            guard let record = matchingTokenExpiry(for: instance.id),
+                  let expiresAt = record.expiresAt,
+                  GitLabTokenExpiry.isWithinWarningWindow(expiresAt: expiresAt, now: now) else {
+                return nil
+            }
+            return ExpiringTokenBanner(
+                id: instance.id,
+                message: GitLabTokenExpiry.bannerMessage(
+                    instanceLabel: instance.displayLabel,
+                    expiresAt: expiresAt,
+                    now: now
+                ),
+                expiresAt: expiresAt
+            )
+        }
+        .sorted { $0.expiresAt < $1.expiresAt }
+    }
+
+    private func matchingTokenExpiry(for instanceID: UUID) -> StoredTokenExpiry? {
+        guard let record = tokenExpiries[instanceID] else { return nil }
+        let fingerprint = Self.tokenFingerprint(settings.lookupToken(for: instanceID))
+        guard record.tokenFingerprint == fingerprint else { return nil }
+        return record
     }
 
     enum RefreshReason {
@@ -452,6 +512,103 @@ final class RefreshCoordinator: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         reviewedStaleTimer = timer
     }
+
+    private func refreshTokenExpiries() async {
+        let targets: [(instance: GitLabInstanceConfig, lookup: TokenLookup, fingerprint: Int)] = await MainActor.run {
+            settings.instances.map { instance in
+                let lookup = settings.lookupToken(for: instance.id)
+                return (instance, lookup, Self.tokenFingerprint(lookup))
+            }
+        }
+
+        #if DEBUG
+        if isGDebugScheme {
+            await applyDebugTokenExpiries(targets)
+            return
+        }
+        #endif
+
+        if targets.contains(where: { if case .locked = $0.lookup { return true }; return false }) {
+            return
+        }
+
+        var fetched: [UUID: StoredTokenExpiry] = [:]
+        await withTaskGroup(of: (UUID, StoredTokenExpiry)?.self) { group in
+            for target in targets {
+                guard case .value(let token) = target.lookup else { continue }
+                let client = self.client
+                let baseURL = target.instance.normalizedBaseURL
+                let fingerprint = target.fingerprint
+                group.addTask {
+                    do {
+                        let expiresAt = try await client.fetchPersonalAccessTokenExpiry(
+                            baseURL: baseURL,
+                            token: token
+                        )
+                        return (target.instance.id, StoredTokenExpiry(tokenFingerprint: fingerprint, expiresAt: expiresAt))
+                    } catch {
+                        gDebugPrint(
+                            "token expiry lookup failed for \(target.instance.displayLabel):",
+                            error.localizedDescription
+                        )
+                        return nil
+                    }
+                }
+            }
+            for await result in group {
+                if Task.isCancelled { break }
+                if let (id, record) = result {
+                    fetched[id] = record
+                }
+            }
+        }
+
+        if Task.isCancelled { return }
+
+        let fetchedExpiries = fetched
+        await MainActor.run {
+            guard !Task.isCancelled else { return }
+            var next: [UUID: StoredTokenExpiry] = [:]
+            for target in targets {
+                guard case .value = target.lookup else { continue }
+                if let fresh = fetchedExpiries[target.instance.id] {
+                    next[target.instance.id] = fresh
+                } else if let previous = tokenExpiries[target.instance.id],
+                          previous.tokenFingerprint == target.fingerprint {
+                    next[target.instance.id] = previous
+                }
+            }
+            tokenExpiries = next
+        }
+    }
+
+    #if DEBUG
+    /// G_DEBUG does not call GitLab for token expiry. The first configured token
+    /// expires in 4 days, so the warning banner and highlight show. A second
+    /// configured token expires in 12 days and stays outside that window.
+    private func applyDebugTokenExpiries(
+        _ targets: [(instance: GitLabInstanceConfig, lookup: TokenLookup, fingerprint: Int)]
+    ) async {
+        let day: TimeInterval = 24 * 60 * 60
+        let daysUntilExpiry = [4, 12]
+        let now = Date()
+        await MainActor.run {
+            guard !Task.isCancelled else { return }
+            var next: [UUID: StoredTokenExpiry] = [:]
+            var configuredIndex = 0
+            for target in targets where target.lookup != .missing {
+                guard configuredIndex < daysUntilExpiry.count else { break }
+                next[target.instance.id] = StoredTokenExpiry(
+                    tokenFingerprint: target.fingerprint,
+                    expiresAt: now.addingTimeInterval(TimeInterval(daysUntilExpiry[configuredIndex]) * day)
+                )
+                configuredIndex += 1
+            }
+            tokenExpiries = next
+            gDebugPrint("RefreshCoordinator mocked token expiry for \(next.count) instance(s)")
+        }
+    }
+    #endif
 
     private struct ListFetch {
         let instanceID: UUID

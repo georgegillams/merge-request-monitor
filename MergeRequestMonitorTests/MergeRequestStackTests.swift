@@ -465,3 +465,89 @@ final class MergeRequestListFiltersTests: XCTestCase {
         )
     }
 }
+
+final class GitLabTokenExpiryTests: XCTestCase {
+    func testParsesExpiryAsMidnightUTC() throws {
+        let date = try XCTUnwrap(GitLabTokenExpiry.expiresAt(fromAPIDate: "2026-11-12"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        XCTAssertEqual(parts.year, 2026)
+        XCTAssertEqual(parts.month, 11)
+        XCTAssertEqual(parts.day, 12)
+        XCTAssertEqual(parts.hour, 0)
+        XCTAssertEqual(parts.minute, 0)
+        XCTAssertEqual(parts.second, 0)
+    }
+
+    func testMissingExpiryDate() {
+        XCTAssertNil(GitLabTokenExpiry.expiresAt(fromAPIDate: nil))
+        XCTAssertNil(GitLabTokenExpiry.expiresAt(fromAPIDate: ""))
+        XCTAssertNil(GitLabTokenExpiry.expiresAt(fromAPIDate: "   "))
+        XCTAssertNil(GitLabTokenExpiry.expiresAt(fromAPIDate: "2026-11-12T00:00:00Z"))
+    }
+
+    func testWarningWindowIncludesTheSeventhDayAndExpiredTokens() {
+        let expires = Date(timeIntervalSince1970: 1_700_000_000)
+        let week: TimeInterval = 7 * 24 * 60 * 60
+        XCTAssertTrue(GitLabTokenExpiry.isWithinWarningWindow(expiresAt: expires, now: expires.addingTimeInterval(-week)))
+        XCTAssertFalse(GitLabTokenExpiry.isWithinWarningWindow(expiresAt: expires, now: expires.addingTimeInterval(-week - 1)))
+        XCTAssertTrue(GitLabTokenExpiry.isWithinWarningWindow(expiresAt: expires, now: expires.addingTimeInterval(3600)))
+    }
+
+    func testTimeLeftLabel() {
+        let expires = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(-(3 * day + 4 * hour))),
+            "Expires in 3 days 4 hours"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(-(7 * day + 2 * hour))),
+            "Expires in 7 days 2 hours"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(-(12 * day))),
+            "Expires in 12 days"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(-(5 * hour))),
+            "Expires in 5 hours"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(-90)),
+            "Expires in 1 minute"
+        )
+        XCTAssertEqual(GitLabTokenExpiry.timeLeftLabel(expiresAt: nil, now: expires), "Does not expire")
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(30)),
+            "Expired"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.timeLeftLabel(expiresAt: expires, now: expires.addingTimeInterval(2 * day)),
+            "Expired 2 days ago"
+        )
+    }
+
+    func testBannerMessage() {
+        let expires = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertEqual(
+            GitLabTokenExpiry.bannerMessage(
+                instanceLabel: "gitlab.com",
+                expiresAt: expires,
+                now: expires.addingTimeInterval(-(2 * day))
+            ),
+            "gitlab.com token expires in 2 days"
+        )
+        XCTAssertEqual(
+            GitLabTokenExpiry.bannerMessage(
+                instanceLabel: "gitlab.com",
+                expiresAt: expires,
+                now: expires.addingTimeInterval(10)
+            ),
+            "gitlab.com token has expired"
+        )
+    }
+
+    private var day: TimeInterval { 24 * 60 * 60 }
+    private var hour: TimeInterval { 60 * 60 }
+}
