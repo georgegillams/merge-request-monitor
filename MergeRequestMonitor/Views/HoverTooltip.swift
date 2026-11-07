@@ -401,56 +401,110 @@ private final class HoverTooltipPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Blurry glass tip. Uses `NSGlassEffectView` when available, otherwise tooltip vibrancy.
+///
+/// The label sits above the glass as a sibling, matching the SwiftUI panel pattern
+/// (content + glass background). Nesting the label in `NSGlassEffectView.contentView`
+/// and sizing with manual frames clipped the trailing characters — e.g. "0/1" as
+/// "0/ ", "In a merge train" as "In a merge" — while leaving empty glass padding.
 private final class TooltipBox: NSView {
     private static let maxTextWidth: CGFloat = 280
     private static let padX: CGFloat = 8
     private static let padY: CGFloat = 4
+    private static let cornerRadius: CGFloat = 6
+
+    private let label = NSTextField(labelWithString: "")
+    private let backdrop: NSView
 
     var message: String = "" {
-        didSet { needsDisplay = true }
+        didSet {
+            guard message != oldValue else { return }
+            label.stringValue = message
+            needsLayout = true
+        }
     }
 
     override var isOpaque: Bool { false }
 
+    override init(frame frameRect: NSRect) {
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = Self.cornerRadius
+            glass.style = .regular
+            // Empty content so the material still samples; the tip text draws above.
+            glass.contentView = NSView()
+            backdrop = glass
+        } else {
+            let effect = NSVisualEffectView()
+            effect.material = .toolTip
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = Self.cornerRadius
+            effect.layer?.masksToBounds = true
+            backdrop = effect
+        }
+
+        super.init(frame: frameRect)
+
+        wantsLayer = true
+        layer?.cornerRadius = Self.cornerRadius
+        layer?.masksToBounds = true
+
+        label.font = NSFont.toolTipsFont(ofSize: 0)
+        label.textColor = .labelColor
+        label.backgroundColor = .clear
+        label.drawsBackground = false
+        label.isBezeled = false
+        label.isEditable = false
+        label.isSelectable = false
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
+        label.cell?.wraps = true
+        label.cell?.isScrollable = false
+        label.setContentHuggingPriority(.required, for: .vertical)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        addSubview(backdrop)
+        addSubview(label)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     func size(for text: String) -> NSSize {
-        let measured = (text as NSString).boundingRect(
-            with: NSSize(width: Self.maxTextWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: textAttributes()
-        )
+        label.stringValue = text
+        label.preferredMaxLayoutWidth = Self.maxTextWidth
+        let measured = label.cell?.cellSize(
+            forBounds: NSRect(x: 0, y: 0, width: Self.maxTextWidth, height: CGFloat.greatestFiniteMagnitude)
+        ) ?? label.sizeThatFits(NSSize(width: Self.maxTextWidth, height: CGFloat.greatestFiniteMagnitude))
         return NSSize(
-            width: min(Self.maxTextWidth, ceil(measured.width)) + Self.padX * 2 + 1,
-            height: ceil(measured.height) + Self.padY * 2 + 1
+            width: min(Self.maxTextWidth, ceil(measured.width)) + Self.padX * 2,
+            height: ceil(measured.height) + Self.padY * 2
         )
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-        NSColor.controlBackgroundColor.setFill()
-        path.fill()
-        NSColor.separatorColor.setStroke()
-        path.lineWidth = 1
-        path.stroke()
-
-        let textRect = bounds.insetBy(dx: Self.padX, dy: Self.padY)
-        (message as NSString).draw(in: textRect, withAttributes: textAttributes())
+    override func layout() {
+        super.layout()
+        backdrop.frame = bounds
+        if #available(macOS 26.0, *),
+           let glass = backdrop as? NSGlassEffectView,
+           let content = glass.contentView {
+            content.frame = bounds
+        }
+        label.frame = bounds.insetBy(dx: Self.padX, dy: Self.padY)
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
-    }
-
-    private func textAttributes() -> [NSAttributedString.Key: Any] {
-        let style = NSMutableParagraphStyle()
-        style.lineBreakMode = .byWordWrapping
-        style.alignment = .left
-        return [
-            .font: NSFont.toolTipsFont(ofSize: 0),
-            .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: style,
-        ]
+        label.textColor = .labelColor
+        if let effect = backdrop as? NSVisualEffectView {
+            effect.state = .active
+        }
     }
 }
 

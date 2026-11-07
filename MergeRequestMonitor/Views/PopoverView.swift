@@ -31,10 +31,6 @@ struct PopoverView: View {
         )
     }
 
-    private var panelShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -44,11 +40,7 @@ struct PopoverView: View {
             content
         }
         .frame(width: 420)
-        .background(panelShape.fill(Semantic.Colors.backgroundColorElevated))
-        .clipShape(panelShape)
-        .overlay(
-            panelShape.strokeBorder(Semantic.Colors.subtleOutlineColor, lineWidth: 1)
-        )
+        .liquidGlassPanel(cornerRadius: Self.cornerRadius)
         .padding(1)
         .environment(\.statusSymbolsOutdated, coordinator.isStale(for: selectedTab))
         .onAppear {
@@ -427,7 +419,7 @@ private struct EmptyStateView: View {
         VStack(spacing: Primitive.Layout.spacingBase) {
             ZStack {
                 Circle()
-                    .fill(iconColor.opacity(0.12))
+                    .fill(iconColor.opacity(0.14))
                     .frame(width: 56, height: 56)
                 Image(systemName: systemImage)
                     .font(.system(size: 24, weight: .semibold))

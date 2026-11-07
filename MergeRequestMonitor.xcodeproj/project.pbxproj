@@ -29,6 +29,7 @@
 		A10000162DA7000100GLMN01 /* MenuShortcutMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000162DA7000100GLMN01 /* MenuShortcutMonitor.swift */; };
 		A10000172DA7000100GLMN01 /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000172DA7000100GLMN01 /* ShortcutRecorder.swift */; };
 		A10000182DA7000100GLMN01 /* MergeRequestStackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000182DA7000100GLMN01 /* MergeRequestStackTests.swift */; };
+		A10000192DA7000100GLMN01 /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A2DA7000100GLMN01 /* LiquidGlass.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +67,7 @@
 		A20000172DA7000100GLMN01 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
 		A20000182DA7000100GLMN01 /* MergeRequestStackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRequestStackTests.swift; sourceTree = "<group>"; };
 		A20000192DA7000100GLMN01 /* MergeRequestMonitorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MergeRequestMonitorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A200001A2DA7000100GLMN01 /* LiquidGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlass.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +150,7 @@
 			children = (
 				A20000092DA7000100GLMN01 /* PopoverView.swift */,
 				A200000A2DA7000100GLMN01 /* MRRowView.swift */,
+				A200001A2DA7000100GLMN01 /* LiquidGlass.swift */,
 				A20000132DA7000100GLMN01 /* HoverTooltip.swift */,
 				A20000142DA7000100GLMN01 /* GitLabStatusIcon.swift */,
 				A200000B2DA7000100GLMN01 /* SettingsView.swift */,
@@ -231,7 +234,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 2720;
 				TargetAttributes = {
 					A60000012DA7000100GLMN01 = {
 						CreatedOnToolsVersion = 15.0;
@@ -293,6 +296,7 @@
 				A10000082DA7000100GLMN01 /* RefreshCoordinator.swift in Sources */,
 				A10000092DA7000100GLMN01 /* PopoverView.swift in Sources */,
 				A100000A2DA7000100GLMN01 /* MRRowView.swift in Sources */,
+				A10000192DA7000100GLMN01 /* LiquidGlass.swift in Sources */,
 				A10000132DA7000100GLMN01 /* HoverTooltip.swift in Sources */,
 				A10000142DA7000100GLMN01 /* GitLabStatusIcon.swift in Sources */,
 				A100000B2DA7000100GLMN01 /* SettingsView.swift in Sources */,
@@ -354,9 +358,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = F2NH4J9NYG;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -376,6 +383,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -414,9 +422,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = F2NH4J9NYG;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -429,6 +440,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
@@ -444,7 +456,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = F2NH4J9NYG;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -457,6 +469,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os.local";
 				PRODUCT_MODULE_NAME = MergeRequestMonitor;
@@ -476,7 +489,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = F2NH4J9NYG;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Merge Request Monitor";
@@ -489,6 +502,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os";
 				PRODUCT_MODULE_NAME = MergeRequestMonitor;
@@ -505,9 +519,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = F2NH4J9NYG;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.3;
+				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -524,9 +538,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = F2NH4J9NYG;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.3;
+				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os.tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
