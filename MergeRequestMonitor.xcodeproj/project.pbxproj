@@ -457,7 +457,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os.local";
 				PRODUCT_MODULE_NAME = MergeRequestMonitor;
 				PRODUCT_NAME = "Merge Request Monitor Local";
@@ -489,7 +489,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.georgegillams.gitlab-monitor.mac-os";
 				PRODUCT_MODULE_NAME = MergeRequestMonitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
