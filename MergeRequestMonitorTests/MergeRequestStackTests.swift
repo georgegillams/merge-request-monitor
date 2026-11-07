@@ -295,6 +295,19 @@ final class PopoverTabPreferenceTests: XCTestCase {
         XCTAssertEqual(MergeRequestListKind.requestedReviews.gitLabScope, "reviews_for_me")
     }
 
+    func testOtherTabTitleAndLabels() {
+        XCTAssertEqual(MergeRequestListKind.requestedReviews.tabTitle, "Other merge requests")
+        XCTAssertEqual(PopoverTabPreference.requestedReviews.label, "Other merge requests")
+        XCTAssertEqual(
+            MergeRequestListKind.requestedReviews.tabLabel(count: 3),
+            "Other merge requests (3)"
+        )
+        XCTAssertEqual(
+            MergeRequestListKind.authored.tabLabel(count: 0),
+            "My merge requests (0)"
+        )
+    }
+
     func testRequestedReviewsUseAShorterRecentlyMergedWindow() {
         XCTAssertEqual(MergeRequestListKind.authored.recentlyMergedWindowHours, 12)
         XCTAssertEqual(MergeRequestListKind.requestedReviews.recentlyMergedWindowHours, 4)
@@ -310,6 +323,69 @@ final class PopoverTabPreferenceTests: XCTestCase {
         XCTAssertFalse(
             MergeRequestListKind.requestedReviews.emptyMessage(showRecentlyMerged: false)
                 .contains("recently merged")
+        )
+    }
+}
+
+final class OtherMergeRequestSourcesTests: XCTestCase {
+    func testDefaultIncludesAllSources() {
+        XCTAssertEqual(
+            OtherMergeRequestSources.default,
+            [.reviewRequests, .watchedRepos, .subscribed]
+        )
+    }
+}
+
+final class TabCountStatusesTests: XCTestCase {
+    func testDefaultCountsReadyAndMergeTrainOnly() {
+        XCTAssertEqual(TabCountStatuses.default, [.ready, .mergeTrain])
+        let ready = item(id: "ready", title: "Ready", mergeIndicator: .none)
+        let train = item(id: "train", title: "Train", mergeIndicator: .mergeTrain)
+        let draft = item(id: "draft", title: "Draft: WIP", mergeIndicator: .none)
+        let merged = item(id: "merged", title: "Merged", mergeIndicator: .merged)
+        XCTAssertEqual(
+            TabCountStatuses.default.count(in: [ready, train, draft, merged]),
+            2
+        )
+    }
+
+    func testCustomStatusesCanIncludeDraftAndMerged() {
+        let statuses: TabCountStatuses = [.draft, .merged]
+        let ready = item(id: "ready", title: "Ready", mergeIndicator: .none)
+        let draft = item(id: "draft", title: "Draft: WIP", mergeIndicator: .none)
+        let merged = item(id: "merged", title: "Merged", mergeIndicator: .merged)
+        XCTAssertEqual(statuses.count(in: [ready, draft, merged]), 2)
+    }
+
+    private func item(
+        id: String,
+        title: String,
+        mergeIndicator: MergeIndicator
+    ) -> MergeRequestItem {
+        MergeRequestItem(
+            id: id,
+            instanceID: UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!,
+            instanceLabel: "GitLab",
+            projectID: 1,
+            iid: 1,
+            title: title,
+            projectPath: "acme/app",
+            webURL: nil,
+            sourceBranch: "feature",
+            targetBranch: "develop",
+            defaultBranch: "develop",
+            stages: [],
+            approvals: ApprovalSummary(
+                approvedBy: [],
+                approvalsRequired: nil,
+                approvalsLeft: nil,
+                userHasApproved: false
+            ),
+            threads: .empty,
+            mergeIndicator: mergeIndicator,
+            mergedAt: mergeIndicator == .merged ? Date(timeIntervalSince1970: 1) : nil,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1)
         )
     }
 }

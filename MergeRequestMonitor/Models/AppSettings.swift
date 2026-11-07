@@ -34,11 +34,25 @@ final class AppSettings: ObservableObject {
             Self.persist(authoredFilters, recentlyMergedKey: Self.authoredShowRecentlyMergedKey, draftsKey: Self.authoredShowDraftsKey)
         }
     }
-    /// Recently merged and draft visibility for merge requests requested of you.
+    /// Recently merged and draft visibility for other merge requests.
     @Published var requestedReviewFilters: MergeRequestListFilters {
         didSet {
             guard requestedReviewFilters != oldValue else { return }
             Self.persist(requestedReviewFilters, recentlyMergedKey: Self.requestedShowRecentlyMergedKey, draftsKey: Self.requestedShowDraftsKey)
+        }
+    }
+    /// Which sources populate the Other merge requests tab.
+    @Published var otherSources: OtherMergeRequestSources {
+        didSet {
+            guard otherSources != oldValue else { return }
+            UserDefaults.standard.set(otherSources.rawValue, forKey: Self.otherSourcesKey)
+        }
+    }
+    /// Statuses that contribute to the count shown on each popover tab.
+    @Published var tabCountStatuses: TabCountStatuses {
+        didSet {
+            guard tabCountStatuses != oldValue else { return }
+            UserDefaults.standard.set(tabCountStatuses.rawValue, forKey: Self.tabCountStatusesKey)
         }
     }
     /// Which list the popover should open on. Last selected uses `lastPopoverTab`.
@@ -76,6 +90,8 @@ final class AppSettings: ObservableObject {
     private static let authoredShowDraftsKey = "gitlabMonitor.authoredShowDrafts"
     private static let requestedShowRecentlyMergedKey = "gitlabMonitor.requestedShowRecentlyMerged"
     private static let requestedShowDraftsKey = "gitlabMonitor.requestedShowDrafts"
+    private static let otherSourcesKey = "gitlabMonitor.otherSources"
+    private static let tabCountStatusesKey = "gitlabMonitor.tabCountStatuses"
     private static let popoverTabPreferenceKey = "gitlabMonitor.popoverTabPreference"
     private static let lastPopoverTabKey = "gitlabMonitor.lastPopoverTab"
     private static let menuShortcutKey = "gitlabMonitor.menuShortcut"
@@ -103,6 +119,16 @@ final class AppSettings: ObservableObject {
             draftsKey: Self.requestedShowDraftsKey,
             defaults: .requestedReviewsDefault
         )
+        if let storedSources = UserDefaults.standard.object(forKey: Self.otherSourcesKey) as? Int {
+            otherSources = OtherMergeRequestSources(rawValue: storedSources)
+        } else {
+            otherSources = .default
+        }
+        if let storedCount = UserDefaults.standard.object(forKey: Self.tabCountStatusesKey) as? Int {
+            tabCountStatuses = TabCountStatuses(rawValue: storedCount)
+        } else {
+            tabCountStatuses = .default
+        }
         popoverTabPreference = PopoverTabPreference(
             rawValue: UserDefaults.standard.string(forKey: Self.popoverTabPreferenceKey) ?? ""
         ) ?? .authored

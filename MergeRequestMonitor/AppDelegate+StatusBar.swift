@@ -167,7 +167,10 @@ extension AppDelegate {
         statusPanelSizeCancellable = Publishers.CombineLatest4(
             refreshCoordinator.$mergeRequests,
             refreshCoordinator.$reviewedMergeRequests,
-            refreshCoordinator.$isRefreshing,
+            Publishers.CombineLatest(
+                refreshCoordinator.$isAuthoredRefreshing,
+                refreshCoordinator.$isReviewedRefreshing
+            ),
             refreshCoordinator.$errors
         )
         .combineLatest(settings.$lastPopoverTab)
